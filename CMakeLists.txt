@@ -113,9 +113,14 @@ target_include_directories(opc_core PUBLIC ${CMAKE_SOURCE_DIR}/Src)
 add_library(opc_adapters
   Src/adapters/modbus_tcp_transport.cpp
   Src/adapters/opc_ua_server.cpp
+  Src/adapters/ring_historian.cpp
+  Src/adapters/sqlite_historian.cpp
+  Src/adapters/frame_log.cpp
+  Src/adapters/memory_metrics.cpp
 )
 add_library(opc::adapters ALIAS opc_adapters)
-target_link_libraries(opc_adapters PUBLIC opc::project open62541)
+find_package(SQLite3 REQUIRED)
+target_link_libraries(opc_adapters PUBLIC opc::project open62541 SQLite::SQLite3)
 target_include_directories(opc_adapters PUBLIC ${CMAKE_SOURCE_DIR}/Src)
 
 add_library(opc_app
@@ -175,6 +180,8 @@ if(BUILD_TESTING)
     tests/test_server_runtime.cpp
     tests/test_opc_ua_read.cpp
     tests/test_opc_ua_write_subs.cpp
+    tests/test_historian.cpp
+    tests/test_frame_log.cpp
   )
   target_link_libraries(opc_tests PRIVATE opc::app opc::adapters opc::core opc::project Catch2::Catch2WithMain open62541)
   target_include_directories(opc_tests PRIVATE ${CMAKE_BINARY_DIR}/generated)

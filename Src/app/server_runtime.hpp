@@ -5,6 +5,8 @@
 #include "core/tag_store.hpp"
 #include "domain/types.hpp"
 #include "ports/i_clock.hpp"
+#include "ports/i_frame_log.hpp"
+#include "ports/i_historian.hpp"
 #include "ports/i_log.hpp"
 #include "ports/i_metrics.hpp"
 #include "ports/i_modbus_transport.hpp"
@@ -28,6 +30,8 @@ struct ServerRuntimeDeps {
     ports::IClock* clock{nullptr};
     ports::IMetrics* metrics{nullptr};
     ports::ILog* log{nullptr};
+    ports::IHistorian* historian{nullptr};
+    ports::IFrameLog* frame_log{nullptr};
     TransportFactory transport_factory;
     /// Optional northbound OPC UA facade (owned by caller or moved in).
     std::unique_ptr<ports::IOpcUaFacade> opcua;
@@ -52,6 +56,7 @@ public:
     [[nodiscard]] const project::Project& project() const { return *project_; }
     [[nodiscard]] ports::IOpcUaFacade* opcua() { return opcua_.get(); }
     [[nodiscard]] const ports::IOpcUaFacade* opcua() const { return opcua_.get(); }
+    [[nodiscard]] ports::IHistorian* historian() { return historian_; }
 
     domain::Result<void> start();
     domain::Result<void> poll_once(domain::TimestampMs now);
@@ -68,9 +73,12 @@ private:
     ports::IClock* clock_{nullptr};
     ports::IMetrics* metrics_{nullptr};
     ports::ILog* log_{nullptr};
+    ports::IHistorian* historian_{nullptr};
+    ports::IFrameLog* frame_log_{nullptr};
     TransportFactory transport_factory_;
     std::unordered_map<std::string, std::unique_ptr<ports::IModbusTransport>> transports_;
     std::unique_ptr<ports::IOpcUaFacade> opcua_;
+    std::optional<std::uint64_t> historian_sub_;
     bool started_{false};
 };
 
@@ -79,6 +87,6 @@ private:
 [[nodiscard]] domain::Result<std::shared_ptr<const project::Project>>
 load_project_or_error(const std::string& path, ports::ILog* log);
 
-TransportFactory default_tcp_transport_factory();
+TransportFactory default_tcp_transport_factory(ports::IFrameLog* frame_log = nullptr);
 
 }  // namespace opc::app

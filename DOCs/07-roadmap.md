@@ -65,9 +65,11 @@
 
 ### Этап 5 — Historian и Debug
 
-- Hot ring buffer, cold SQLite
-- Frame log Modbus, метрики spdlog/OTel
-- Replay для отладки
+- [x] Hot ring buffer (`RingHistorian`), cold SQLite (`SqliteHistorian`) — ADR-0014
+- [x] Frame log Modbus (`IFrameLog` / `FileFrameLog`), `MemoryMetrics` stub (OTel later)
+- [x] Replay для отладки (`historian_replay.hpp`)
+- [ ] spdlog structured sink / OTel exporter (замена MemoryMetrics)
+- [ ] Frame-log replay через FakeModbus (PCAP → transport)
 
 ### Этап 6 — Удобство разметки карт
 
@@ -93,7 +95,7 @@
 
 | Сейчас | Цель |
 |--------|------|
-| `ServerRuntime` + OPC UA Read/Write/Subs | Asio reactor, historian, SignAndEncrypt |
+| `ServerRuntime` + OPC UA + Historian/frame log | Asio reactor, SignAndEncrypt, OTel |
 | `*.modbusproj.json` + `opc-map` | doctor / import-csv / редактор |
 | Sync `ModbusTcpTransport` | Asio strand-per-endpoint |
 | open62541 FetchContent | Опционально pin hash / system package |

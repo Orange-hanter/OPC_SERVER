@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -12,6 +13,10 @@ struct CliOptions {
     bool watch{false};
     int watch_period_ms{1000};
     bool enable_opcua{true};
+    bool enable_historian{true};
+    std::size_t historian_capacity{4096};
+    std::string historian_db;  // empty = hot ring only
+    std::string frame_log_path;  // empty = disabled
     bool help{false};
     bool version{false};
     std::vector<std::string> errors;
