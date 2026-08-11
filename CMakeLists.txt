@@ -5,16 +5,29 @@ set(OPC_SERVER_VERSION "0.1.0" CACHE STRING "OPC_SERVER package version")
 project(OPC_SERVER VERSION ${OPC_SERVER_VERSION} LANGUAGES CXX)
 
 include(CheckCXXCompilerFlag)
+include(CheckCXXSourceCompiles)
 include(FetchContent)
 include(CTest)
 include(GNUInstallDirs)
 
-check_cxx_compiler_flag("-std=c++26" OPC_HAS_CXX26)
-if(OPC_HAS_CXX26)
+check_cxx_compiler_flag("-std=c++26" OPC_HAS_CXX26_FLAG)
+
+set(_OPC_SAVED_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -std=c++26")
+check_cxx_source_compiles("
+#include <expected>
+int main() {
+  std::expected<int, int> value{1};
+  return *value;
+}
+" OPC_HAS_STD_EXPECTED_CXX26)
+set(CMAKE_REQUIRED_FLAGS "${_OPC_SAVED_CMAKE_REQUIRED_FLAGS}")
+
+if(OPC_HAS_CXX26_FLAG AND OPC_HAS_STD_EXPECTED_CXX26)
   set(OPC_CXX_STANDARD 26)
 else()
   set(OPC_CXX_STANDARD 23)
-  message(WARNING "C++26 is not supported by this compiler; building with C++${OPC_CXX_STANDARD}. Target remains C++26.")
+  message(WARNING "C++26 with std::expected is not available; building with C++${OPC_CXX_STANDARD}. Target remains C++26.")
 endif()
 
 set(CMAKE_CXX_STANDARD ${OPC_CXX_STANDARD})
