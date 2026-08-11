@@ -30,25 +30,28 @@ OPC Classic / DA не входят в ядро; граница описана в
 | Пример проекта | [DOCs/examples/demo-plant.modbusproj.json](DOCs/examples/demo-plant.modbusproj.json) |
 | Roadmap | [DOCs/07-roadmap.md](DOCs/07-roadmap.md) |
 
-## Сборка (текущий каркас)
-
-Репозиторий пока содержит ранний каркас приложения. Актуальная инструкция по целевому стеку появится вместе с этапами roadmap; сейчас:
+## Сборка (текущий каркас + этап 1)
 
 ```bash
 git clone --recursive https://github.com/Orange-hanter/OPC_SERVER
 cd OPC_SERVER
-cmake ./ -B build
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-На Windows генератор по умолчанию может создать проект Visual Studio; на Linux предпочтителен Ninja:
+Инструмент карт:
 
 ```bash
-cmake -S . -B build -G Ninja
-cmake --build build
+./build/opc-map validate DOCs/examples/demo-plant.modbusproj.json
+./build/opc-map migrate-legacy DOCs/config.json -o /tmp/migrated.modbusproj.json
 ```
 
-## Статус
+На компиляторах без C++26 (например GCC 13) CMake автоматически откатывается на **C++23** с предупреждением; целевой стандарт проекта — **C++26**.
 
-Код: прототип загрузки JSON и пустой цикл (`Src/`).  
-Спецификация: комплект документов в `DOCs/` — ориентир для реализации по [roadmap](DOCs/07-roadmap.md).
+На Windows генератор по умолчанию может создать проект Visual Studio:
+
+```bash
+cmake -S . -B build
+cmake --build build
+```

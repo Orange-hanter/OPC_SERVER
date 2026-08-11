@@ -12,9 +12,10 @@
 
 ### Этап 1 — Формат проекта и `opc-map` (минимум)
 
-- Парсер `*.modbusproj.json` + валидация по Schema
-- `opc-map validate` / `opc-map migrate-legacy` (из [config.json](config.json))
-- Unit-тесты на примеры из `DOCs/examples/`
+- [x] Парсер `*.modbusproj.json` + семантическая валидация (по правилам Schema)
+- [x] `opc-map validate` / `opc-map migrate-legacy` (из [config.json](config.json))
+- [x] Unit-тесты на примеры из `DOCs/examples/`
+- [ ] Полная проверка через JSON Schema draft 2020-12 engine (сейчас — эквивалентные semantic checks)
 
 ### Этап 2 — ModbusPoller + TagStore
 
