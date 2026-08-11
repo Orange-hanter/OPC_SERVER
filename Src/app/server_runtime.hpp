@@ -8,6 +8,7 @@
 #include "ports/i_log.hpp"
 #include "ports/i_metrics.hpp"
 #include "ports/i_modbus_transport.hpp"
+#include "ports/i_opc_ua_facade.hpp"
 #include "project/types.hpp"
 
 #include <functional>
@@ -28,6 +29,8 @@ struct ServerRuntimeDeps {
     ports::IMetrics* metrics{nullptr};
     ports::ILog* log{nullptr};
     TransportFactory transport_factory;
+    /// Optional northbound OPC UA facade (owned by caller or moved in).
+    std::unique_ptr<ports::IOpcUaFacade> opcua;
 };
 
 /// Composition root for southbound+core runtime (ADR-0001).
@@ -47,6 +50,8 @@ public:
     [[nodiscard]] const core::TagStore& tag_store() const { return tag_store_; }
     [[nodiscard]] core::Dispatcher& dispatcher() { return *dispatcher_; }
     [[nodiscard]] const project::Project& project() const { return *project_; }
+    [[nodiscard]] ports::IOpcUaFacade* opcua() { return opcua_.get(); }
+    [[nodiscard]] const ports::IOpcUaFacade* opcua() const { return opcua_.get(); }
 
     domain::Result<void> start();
     domain::Result<void> poll_once(domain::TimestampMs now);
@@ -65,6 +70,7 @@ private:
     ports::ILog* log_{nullptr};
     TransportFactory transport_factory_;
     std::unordered_map<std::string, std::unique_ptr<ports::IModbusTransport>> transports_;
+    std::unique_ptr<ports::IOpcUaFacade> opcua_;
     bool started_{false};
 };
 

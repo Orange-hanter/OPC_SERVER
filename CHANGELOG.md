@@ -9,7 +9,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- GitHub Actions CI (GCC/Clang build + test) with Linux x64 artifacts
+- Stage 3 OPC UA Read: `OpcUaServer` (open62541), TagStore → UA variables, client smoke tests
+- CLI `--no-opcua`; ServerRuntime wires optional northbound facade
+- FetchContent open62541 (v1.4.11)
+- GitHub Actions CI (GCC build + test) with Linux x64 artifacts
 - Release workflow on SemVer tags (`v*.*.*`) publishing tarball + SHA256
 - CI/release strategy documentation (`DOCs/11-ci-and-releases.md`)
 - CMake `install()` rules for `OPC_SERVER` and `opc-map`
