@@ -21,5 +21,9 @@ target_compile_definitions(opc_tests PRIVATE
 )
 opc_apply_project_options(opc_tests)
 
-include(Catch)
+if(OPC_CATCH_DISCOVERY_MODULE)
+  include("${OPC_CATCH_DISCOVERY_MODULE}")
+else()
+  include(Catch)
+endif()
 catch_discover_tests(opc_tests)
