@@ -76,6 +76,9 @@ cmake --preset dev \
 Санитайзеры, PCH, unity и IPO — инструменты с разными компромиссами, а не
 обязательный «максимальный» профиль. Например, unity build ускоряет full build,
 но может скрывать отсутствующие include и увеличивать потребление памяти.
+`validate.cpp` показывает escape hatch `SKIP_UNITY_BUILD_INCLUSION`: в нём и
+`load.cpp` есть одноимённые функции anonymous namespace, которые корректны в
+разных translation units, но конфликтуют после unity-объединения.
 
 ## Два способа получать зависимости
 
