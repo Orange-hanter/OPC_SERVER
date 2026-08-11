@@ -1,7 +1,9 @@
-build/*
-Project/*
 .vs/*
 .vscode/*
+build/*
+Project/*
+stage/*
+dist/*
 CppProperties.json
 compile_commands.json
 cmake-build-*/
