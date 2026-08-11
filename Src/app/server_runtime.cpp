@@ -83,6 +83,9 @@ domain::Result<void> ServerRuntime::start() {
             return ua;
         }
         if (auto* concrete = dynamic_cast<adapters::OpcUaServer*>(opcua_.get())) {
+            concrete->set_write_handler([this](domain::TagId id, domain::ScalarValue value) {
+                return dispatcher_->enqueue_write(id, std::move(value));
+            });
             if (auto bind = concrete->bind_index(index_, tag_store_); !bind) {
                 return bind;
             }

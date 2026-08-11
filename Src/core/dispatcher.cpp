@@ -1,6 +1,7 @@
 #include "core/dispatcher.hpp"
 #include "core/translator.hpp"
 
+#include <iterator>
 #include <vector>
 
 namespace opc::core {
@@ -236,30 +237,42 @@ domain::Result<void> Dispatcher::enqueue_write(domain::TagId tag_id, domain::Sca
         return std::unexpected(domain::Error{
             domain::ErrorCode::Permission, "tag not writable", "core.dispatcher", false});
     }
-    write_queues_[binding->endpoint_id].push_back(PendingWrite{tag_id, std::move(value)});
-    if (deps_.metrics != nullptr) {
-        deps_.metrics->gauge_set("modbus_write_queue_depth",
-                                 static_cast<double>(write_queues_[binding->endpoint_id].size()));
+    {
+        std::lock_guard lock(write_mutex_);
+        write_queues_[binding->endpoint_id].push_back(PendingWrite{tag_id, std::move(value)});
+        if (deps_.metrics != nullptr) {
+            deps_.metrics->gauge_set(
+                "modbus_write_queue_depth",
+                static_cast<double>(write_queues_[binding->endpoint_id].size()));
+        }
     }
     return {};
 }
 
 domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
-    auto q_it = write_queues_.find(std::string(endpoint_id));
-    if (q_it == write_queues_.end() || q_it->second.empty()) {
-        return {};
+    std::vector<PendingWrite> batch;
+    {
+        std::lock_guard lock(write_mutex_);
+        auto q_it = write_queues_.find(std::string(endpoint_id));
+        if (q_it == write_queues_.end() || q_it->second.empty()) {
+            return {};
+        }
+        batch.swap(q_it->second);
     }
     auto t_it = transports_.find(std::string(endpoint_id));
     if (t_it == transports_.end() || t_it->second == nullptr) {
+        // Put writes back so they are not lost.
+        std::lock_guard lock(write_mutex_);
+        auto& queue = write_queues_[std::string(endpoint_id)];
+        queue.insert(queue.begin(), std::make_move_iterator(batch.begin()),
+                     std::make_move_iterator(batch.end()));
         return std::unexpected(domain::Error{
             domain::ErrorCode::NotFound, "transport not bound", "core.dispatcher", false});
     }
     auto& transport = *t_it->second;
     const auto now = deps_.clock != nullptr ? deps_.clock->now_ms() : domain::TimestampMs{0};
 
-    while (!q_it->second.empty()) {
-        auto pending = std::move(q_it->second.front());
-        q_it->second.erase(q_it->second.begin());
+    for (auto& pending : batch) {
         auto binding = deps_.index.find_by_id(pending.tag_id);
         if (!binding) {
             continue;

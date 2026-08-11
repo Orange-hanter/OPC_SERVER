@@ -9,9 +9,11 @@
 #include "project/types.hpp"
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace opc::core {
 
@@ -58,6 +60,7 @@ private:
         domain::TagId tag_id{0};
         domain::ScalarValue value{};
     };
+    std::mutex write_mutex_;
     std::unordered_map<std::string, std::vector<PendingWrite>> write_queues_;
 };
 

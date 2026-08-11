@@ -51,9 +51,10 @@
 
 ### Этап 4 — Subscriptions и Write
 
-- MonitoredItems / Publish
-- Write path → Dispatcher queue → FC06/16/05/15
-- Политика `writes_first`, маппинг StatusCode
+- [x] MonitoredItems / Publish (TagStore → `writeDataValue` → UA notifications)
+- [x] Write path → Dispatcher queue → FC06/16/05/15 (`OpcUaServer` ValueCallback)
+- [x] Политика `writes_first`, маппинг StatusCode / WritePending
+- [x] Smoke-тесты UA Write + Subscription (`tests/test_opc_ua_write_subs.cpp`)
 
 ### Этап 5 — Historian и Debug
 
