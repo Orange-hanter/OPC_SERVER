@@ -7,6 +7,7 @@
 #include "adapters/sqlite_historian.hpp"
 #include "adapters/manual_clock.hpp"
 #include "adapters/testsupport/fake_modbus_transport.hpp"
+#include "app/cli_options.hpp"
 #include "app/server_runtime.hpp"
 #include "core/tag_store.hpp"
 #include "ports/i_log.hpp"
