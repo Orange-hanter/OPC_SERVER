@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace opc::monitor {
@@ -302,6 +303,65 @@ struct MonitorClient::Impl {
         }
     }
 
+    nlohmann::json browse_children(const UA_NodeId& node,
+                                   int depth,
+                                   std::size_t& node_count,
+                                   std::unordered_set<std::string>& visited,
+                                   UA_StatusCode& result_status) {
+        UA_BrowseRequest request;
+        UA_BrowseRequest_init(&request);
+        request.nodesToBrowse = UA_BrowseDescription_new();
+        request.nodesToBrowseSize = 1;
+        UA_NodeId_copy(&node, &request.nodesToBrowse[0].nodeId);
+        request.nodesToBrowse[0].browseDirection = UA_BROWSEDIRECTION_FORWARD;
+        request.nodesToBrowse[0].referenceTypeId =
+            UA_NODEID_NUMERIC(0, UA_NS0ID_HIERARCHICALREFERENCES);
+        request.nodesToBrowse[0].includeSubtypes = true;
+        request.nodesToBrowse[0].resultMask = UA_BROWSERESULTMASK_ALL;
+        auto response = UA_Client_Service_browse(client, request);
+        UA_BrowseRequest_clear(&request);
+
+        if (response.responseHeader.serviceResult != UA_STATUSCODE_GOOD ||
+            response.resultsSize != 1 ||
+            response.results[0].statusCode != UA_STATUSCODE_GOOD) {
+            result_status = response.responseHeader.serviceResult != UA_STATUSCODE_GOOD
+                                ? response.responseHeader.serviceResult
+                                : (response.resultsSize == 1
+                                       ? response.results[0].statusCode
+                                       : UA_STATUSCODE_BADUNEXPECTEDERROR);
+            UA_BrowseResponse_clear(&response);
+            return nlohmann::json::array();
+        }
+
+        nlohmann::json children = nlohmann::json::array();
+        for (std::size_t i = 0;
+             i < response.results[0].referencesSize && node_count < 10'000;
+             ++i) {
+            const auto& ref = response.results[0].references[i];
+            const auto id = node_id_string(ref.nodeId.nodeId);
+            nlohmann::json child{
+                {"nodeId", id},
+                {"browseName", ua_string(ref.browseName.name)},
+                {"namespaceIndex", ref.browseName.namespaceIndex},
+                {"displayName", ua_string(ref.displayName.text)},
+                {"nodeClass", node_class_name(ref.nodeClass)},
+            };
+            ++node_count;
+            const bool can_recurse =
+                depth > 1 && ref.nodeId.serverIndex == 0 &&
+                ref.nodeId.namespaceUri.length == 0 &&
+                (ref.nodeClass == UA_NODECLASS_OBJECT || ref.nodeClass == UA_NODECLASS_VIEW);
+            if (can_recurse && visited.insert(id).second) {
+                UA_StatusCode child_status = UA_STATUSCODE_GOOD;
+                child["children"] = browse_children(
+                    ref.nodeId.nodeId, depth - 1, node_count, visited, child_status);
+            }
+            children.push_back(std::move(child));
+        }
+        UA_BrowseResponse_clear(&response);
+        return children;
+    }
+
     void browse(const nlohmann::json& command) {
         if (!connected) {
             emit_error("browse requires an active connection",
@@ -320,44 +380,23 @@ struct MonitorClient::Impl {
             return;
         }
 
-        UA_BrowseRequest request;
-        UA_BrowseRequest_init(&request);
-        request.nodesToBrowse = UA_BrowseDescription_new();
-        request.nodesToBrowseSize = 1;
-        UA_NodeId_copy(&node, &request.nodesToBrowse[0].nodeId);
-        request.nodesToBrowse[0].browseDirection = UA_BROWSEDIRECTION_FORWARD;
-        request.nodesToBrowse[0].referenceTypeId =
-            UA_NODEID_NUMERIC(0, UA_NS0ID_HIERARCHICALREFERENCES);
-        request.nodesToBrowse[0].includeSubtypes = true;
-        request.nodesToBrowse[0].resultMask = UA_BROWSERESULTMASK_ALL;
-        auto response = UA_Client_Service_browse(client, request);
+        int max_depth = 1;
+        if (const auto depth = command.find("maxDepth");
+            depth != command.end() && depth->is_number_integer()) {
+            max_depth = std::clamp(depth->get<int>(), 1, 16);
+        }
+        std::size_t node_count = 0;
+        std::unordered_set<std::string> visited{input};
+        UA_StatusCode browse_status = UA_STATUSCODE_GOOD;
+        auto children =
+            browse_children(node, max_depth, node_count, visited, browse_status);
         UA_NodeId_clear(&node);
-        UA_BrowseRequest_clear(&request);
 
-        if (response.responseHeader.serviceResult != UA_STATUSCODE_GOOD ||
-            response.resultsSize != 1 ||
-            response.results[0].statusCode != UA_STATUSCODE_GOOD) {
-            const auto status = response.responseHeader.serviceResult != UA_STATUSCODE_GOOD
-                                    ? response.responseHeader.serviceResult
-                                    : (response.resultsSize == 1
-                                           ? response.results[0].statusCode
-                                           : UA_STATUSCODE_BADUNEXPECTEDERROR);
-            UA_BrowseResponse_clear(&response);
-            emit_error("browse failed for " + input, status, &command);
+        if (browse_status != UA_STATUSCODE_GOOD) {
+            emit_error("browse failed for " + input, browse_status, &command);
             return;
         }
 
-        nlohmann::json children = nlohmann::json::array();
-        for (std::size_t i = 0; i < response.results[0].referencesSize; ++i) {
-            const auto& ref = response.results[0].references[i];
-            children.push_back(
-                {{"nodeId", node_id_string(ref.nodeId.nodeId)},
-                 {"browseName", ua_string(ref.browseName.name)},
-                 {"namespaceIndex", ref.browseName.namespaceIndex},
-                 {"displayName", ua_string(ref.displayName.text)},
-                 {"nodeClass", node_class_name(ref.nodeClass)}});
-        }
-        UA_BrowseResponse_clear(&response);
         nlohmann::json event{{"event", "browseResult"},
                              {"nodeId", input},
                              {"children", std::move(children)}};

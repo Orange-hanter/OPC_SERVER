@@ -359,7 +359,9 @@ async fn monitor_browse(
         &app,
         &state,
         json!({
-            "command": "browse", "nodeId": node_id.unwrap_or_else(|| "ns=0;i=85".to_owned())
+            "command": "browse",
+            "nodeId": node_id.unwrap_or_else(|| "ns=0;i=85".to_owned()),
+            "maxDepth": 8
         }),
     )
     .await
