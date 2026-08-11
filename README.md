@@ -1,25 +1,46 @@
 # OPC_SERVER
 
-Промышленный шлюз **Modbus → OPC UA → SCADA**: диспетчеризация опроса, отладка, трансляция данных и накопление истории для диспетчерских задач.
+Промышленный программный шлюз **Modbus → OPC UA → SCADA** для диспетчеризации, отладки, трансляции и накопления данных.
 
-> Документация целевой архитектуры: **[DOCs/README.md](DOCs/README.md)**  
-> Стандарты и ADR: **[DOCs/08-engineering-standards.md](DOCs/08-engineering-standards.md)**, **[DOCs/adr/](DOCs/adr/README.md)**  
-> Как контрибьютить: **[CONTRIBUTING.md](CONTRIBUTING.md)**
+## Описание проекта
 
-## Возможности (целевые)
+`OPC_SERVER` собирает данные с полевых устройств по **Modbus TCP**, приводит их к инженерным тегам (типы, byte order, scale/offset) и отдаёт верхнему уровню через **OPC UA**. Цель — прозрачный, тестируемый контур между PLC/IoT и SCADA без смешивания Classic/DA в ядре.
 
-- Опрос устройств по **Modbus TCP** (UDP — позже) по удобным **проектам карт** `*.modbusproj.json`
-- Публикация тегов в **OPC UA** (Read / Write / Subscriptions) для SCADA
-- Диспетчеризация групп опроса, write-down, качество и временные метки
-- Отладка кадров и сессий, локальный historian
+Проект ориентирован на:
 
-OPC Classic / DA не входят в ядро; граница описана в [DOCs/01-overview.md](DOCs/01-overview.md).
+- **удобную разметку карт** Modbus в формате `*.modbusproj.json` и CLI `opc-map`;
+- **предсказуемый опрос** с группами fast/normal/slow и изоляцией по endpoint;
+- **качество и время** на каждом теге (`Good` / `Uncertain` / `Bad`);
+- **архитектуру Ports & Adapters** (C++26): домен и core независимы от Asio/open62541.
 
-## Стек (целевой)
+| Слой | Роль |
+|------|------|
+| Southbound | Modbus TCP (UDP позже) |
+| Core | Dispatcher, Translator, TagStore |
+| Northbound | OPC UA Server (в разработке по roadmap) |
+| Engineering | `opc-map`, схемы и примеры карт |
 
-- **C++26**, CMake, Ninja
-- Asio, open62541, nlohmann/json, spdlog, OpenTelemetry  
-  Подробности: [DOCs/05-tech-stack.md](DOCs/05-tech-stack.md)
+Норматив: [DOCs/08-engineering-standards.md](DOCs/08-engineering-standards.md), [ADR](DOCs/adr/README.md).
+
+> Документация: **[DOCs/README.md](DOCs/README.md)** · Contributing: **[CONTRIBUTING.md](CONTRIBUTING.md)**
+
+## Возможности
+
+**Сейчас (этапы 1–2):** загрузка/валидация проектов карт, миграция legacy config, TagStore, Translator, диспетчер опроса на fake/TCP transport, CLI `opc-map`.
+
+**Целевые:**
+
+- Опрос Holding/Input/Coils по проектам карт
+- OPC UA Read / Write / Subscriptions для SCADA
+- Write-down, historian, frame debug, метрики
+
+OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
+
+## Стек
+
+- **C++26** (fallback C++23), CMake, Ninja
+- Asio, open62541 (UA — следующие этапы), nlohmann/json  
+  Подробнее: [DOCs/05-tech-stack.md](DOCs/05-tech-stack.md)
 
 ## Документация
 
@@ -28,32 +49,23 @@ OPC Classic / DA не входят в ядро; граница описана в
 | Оглавление | [DOCs/README.md](DOCs/README.md) |
 | Обзор | [DOCs/01-overview.md](DOCs/01-overview.md) |
 | Архитектура | [DOCs/02-architecture.md](DOCs/02-architecture.md) |
-| Проекты карт Modbus | [DOCs/03-modbus-projects.md](DOCs/03-modbus-projects.md) |
-| Пример проекта | [DOCs/examples/demo-plant.modbusproj.json](DOCs/examples/demo-plant.modbusproj.json) |
+| Проекты карт | [DOCs/03-modbus-projects.md](DOCs/03-modbus-projects.md) |
+| Пример | [DOCs/examples/demo-plant.modbusproj.json](DOCs/examples/demo-plant.modbusproj.json) |
 | Roadmap | [DOCs/07-roadmap.md](DOCs/07-roadmap.md) |
 
-## Сборка (текущий каркас + этап 1)
+## Сборка
 
 ```bash
 git clone --recursive https://github.com/Orange-hanter/OPC_SERVER
 cd OPC_SERVER
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
-
-Инструмент карт:
 
 ```bash
 ./build/opc-map validate DOCs/examples/demo-plant.modbusproj.json
 ./build/opc-map migrate-legacy DOCs/config.json -o /tmp/migrated.modbusproj.json
 ```
 
-На компиляторах без C++26 (например GCC 13) CMake автоматически откатывается на **C++23** с предупреждением; целевой стандарт проекта — **C++26**.
-
-На Windows генератор по умолчанию может создать проект Visual Studio:
-
-```bash
-cmake -S . -B build
-cmake --build build
-```
+Без C++26 CMake откатывается на **C++23** с предупреждением.
