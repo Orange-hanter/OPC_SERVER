@@ -32,7 +32,15 @@
 - [x] `Dispatcher::poll_due` + write queue (`writes_first`) + Fake component tests
 - [x] `RuntimeIndex` (TagId ↔ project tags)
 - [ ] Полный reactor (Asio io_context + strand per endpoint + timers)
-- [ ] Watchlist в консоли / app composition root
+- [x] Watchlist в консоли / app composition root
+
+### Этап 2.5 — Runtime infrastructure
+
+- [x] `ServerRuntime` composition root + `TransportFactory`
+- [x] `Application` CLI (`--project`, `--once`, `--watch`)
+- [x] `ILog`, `ManualClock`, StderrLog
+- [x] Bootstrap tests with Fake transport
+- [ ] Asio reactor loop (replace sleep) — следующий инкремент
 
 ### Этап 3 — OPC UA Read
 

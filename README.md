@@ -26,7 +26,7 @@
 
 ## Возможности
 
-**Сейчас (этапы 1–2):** загрузка/валидация проектов карт, миграция legacy config, TagStore, Translator, диспетчер опроса на fake/TCP transport, CLI `opc-map`.
+**Сейчас:** проекты карт + `opc-map`, TagStore/Translator/Dispatcher, Modbus TCP transport, `ServerRuntime` composition root (`--project` / `--once` / `--watch`).
 
 **Целевые:**
 
