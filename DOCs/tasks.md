@@ -1,3 +1,6 @@
+> Исторический backlog (2019). Актуальная спецификация и порядок работ: [README.md](README.md), [07-roadmap.md](07-roadmap.md).  
+> Формат карт эволюционирует от [config.json](config.json) к [examples/demo-plant.modbusproj.json](examples/demo-plant.modbusproj.json) — см. [03-modbus-projects.md](03-modbus-projects.md).
+
 1. Реализовать процедуру опроса IoT сенсора посредством протокола MofBud TCP/UDP (в первую оченедь TCP). Для этого, нужно:
 	1.1 Получить информацию о том как система должна быть сконфигурированна(карту адресов, адрес устройства, сетевые настройки (уточнить формат карты));
 	1.2 Исходя из карты сформировать ряд пакетов ModBus;
