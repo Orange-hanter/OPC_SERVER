@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Allow release workflow to inject SemVer without editing this file.
 set(OPC_SERVER_VERSION "0.1.0" CACHE STRING "OPC_SERVER package version")
-project(OPC_SERVER VERSION ${OPC_SERVER_VERSION} LANGUAGES CXX)
+project(OPC_SERVER VERSION ${OPC_SERVER_VERSION} LANGUAGES CXX C)
 
 include(CheckCXXCompilerFlag)
 include(CheckCXXSourceCompiles)
@@ -47,6 +47,31 @@ if(NOT OPC_HAS_STD_EXPECTED_CXX23)
     "and ensure a recent libstdc++ is installed.")
 endif()
 
+set(CMAKE_CXX_STANDARD ${OPC_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# --- open62541 (OPC UA) ---
+set(UA_ENABLE_AMALGAMATION OFF CACHE BOOL "" FORCE)
+set(UA_ENABLE_ENCRYPTION OFF CACHE BOOL "" FORCE)
+set(UA_ENABLE_HISTORIZING OFF CACHE BOOL "" FORCE)
+set(UA_ENABLE_PUBSUB OFF CACHE BOOL "" FORCE)
+set(UA_ENABLE_PUBSUB_INFORMATIONMODEL OFF CACHE BOOL "" FORCE)
+set(UA_ENABLE_DEBUG_SANITIZER OFF CACHE BOOL "" FORCE)
+set(UA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(UA_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(UA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(UA_NAMESPACE_ZERO "REDUCED" CACHE STRING "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+  open62541
+  GIT_REPOSITORY https://github.com/open62541/open62541.git
+  GIT_TAG        v1.4.11
+  GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(open62541)
+
 add_library(opc_project
   Src/project/load.cpp
   Src/project/validate.cpp
@@ -71,9 +96,10 @@ target_include_directories(opc_core PUBLIC ${CMAKE_SOURCE_DIR}/Src)
 
 add_library(opc_adapters
   Src/adapters/modbus_tcp_transport.cpp
+  Src/adapters/opc_ua_server.cpp
 )
 add_library(opc::adapters ALIAS opc_adapters)
-target_link_libraries(opc_adapters PUBLIC opc::core)
+target_link_libraries(opc_adapters PUBLIC opc::core open62541)
 target_include_directories(opc_adapters PUBLIC ${CMAKE_SOURCE_DIR}/Src)
 
 add_library(opc_app
@@ -84,13 +110,6 @@ add_library(opc_app
 add_library(opc::app ALIAS opc_app)
 target_link_libraries(opc_app PUBLIC opc::adapters opc::core opc::project)
 target_include_directories(opc_app PUBLIC ${CMAKE_SOURCE_DIR}/Src)
-
-if(OPC_CXX_STANDARD EQUAL 23)
-  target_compile_features(opc_project PUBLIC cxx_std_23)
-  target_compile_features(opc_core PUBLIC cxx_std_23)
-  target_compile_features(opc_adapters PUBLIC cxx_std_23)
-  target_compile_features(opc_app PUBLIC cxx_std_23)
-endif()
 
 add_executable(OPC_SERVER
   Src/main.cpp
@@ -127,8 +146,9 @@ if(BUILD_TESTING)
     tests/test_translator.cpp
     tests/test_dispatcher.cpp
     tests/test_server_runtime.cpp
+    tests/test_opc_ua_read.cpp
   )
-  target_link_libraries(opc_tests PRIVATE opc::app opc::adapters opc::core opc::project Catch2::Catch2WithMain)
+  target_link_libraries(opc_tests PRIVATE opc::app opc::adapters opc::core opc::project Catch2::Catch2WithMain open62541)
   target_compile_definitions(opc_tests PRIVATE OPC_SERVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
   include(Catch)

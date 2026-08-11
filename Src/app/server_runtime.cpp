@@ -1,6 +1,7 @@
 #include "app/server_runtime.hpp"
 
 #include "adapters/modbus_tcp_transport.hpp"
+#include "adapters/opc_ua_server.hpp"
 #include "project/load.hpp"
 
 #include <filesystem>
@@ -24,7 +25,8 @@ ServerRuntime::ServerRuntime(ServerRuntimeDeps deps)
       clock_(deps.clock),
       metrics_(deps.metrics),
       log_(deps.log),
-      transport_factory_(std::move(deps.transport_factory)) {
+      transport_factory_(std::move(deps.transport_factory)),
+      opcua_(std::move(deps.opcua)) {
     dispatcher_ = std::make_unique<core::Dispatcher>(core::Dispatcher::Dependencies{
         .index = index_,
         .tag_store = &tag_store_,
@@ -75,10 +77,33 @@ domain::Result<void> ServerRuntime::start() {
         dispatcher_->bind_transport(endpoint.id, raw);
         transports_.emplace(endpoint.id, std::move(transport));
     }
+
+    if (opcua_ != nullptr) {
+        if (auto ua = opcua_->start(project_); !ua) {
+            return ua;
+        }
+        if (auto* concrete = dynamic_cast<adapters::OpcUaServer*>(opcua_.get())) {
+            if (auto bind = concrete->bind_index(index_, tag_store_); !bind) {
+                return bind;
+            }
+        } else {
+            for (const auto& binding : index_.tags()) {
+                if (binding.tag.node_path.empty()) {
+                    continue;
+                }
+                if (auto bind = opcua_->bind_tag(binding.id, binding.tag.node_path); !bind) {
+                    return bind;
+                }
+            }
+            opcua_->iterate();
+        }
+    }
+
     started_ = true;
     log_msg(log_, ports::LogLevel::Info,
             "runtime started: " + std::to_string(transports_.size()) + " endpoints, " +
-                std::to_string(index_.tags().size()) + " tags");
+                std::to_string(index_.tags().size()) + " tags" +
+                (opcua_ != nullptr ? ", opcua on" : ", opcua off"));
     return {};
 }
 
@@ -96,6 +121,9 @@ domain::Result<void> ServerRuntime::poll_once(domain::TimestampMs now) {
             log_msg(log_, ports::LogLevel::Warn,
                     "poll error on " + endpoint.id + ": " + r.error().message);
         }
+    }
+    if (opcua_ != nullptr) {
+        opcua_->iterate();
     }
     return first_error;
 }
@@ -137,6 +165,9 @@ void ServerRuntime::write_watchlist(std::ostream& out) const {
 }
 
 void ServerRuntime::stop() {
+    if (opcua_ != nullptr) {
+        opcua_->stop();
+    }
     for (auto& [id, transport] : transports_) {
         if (transport) {
             transport->close();

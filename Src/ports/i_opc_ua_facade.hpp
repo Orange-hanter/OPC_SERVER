@@ -21,6 +21,9 @@ public:
 
     /// Bind tag ids already present in ITagStore to UA variables.
     virtual domain::Result<void> bind_tag(domain::TagId id, std::string_view node_path) = 0;
+
+    /// Apply pending store updates and pump the UA event loop (main thread).
+    virtual void iterate() = 0;
 };
 
 }  // namespace opc::ports

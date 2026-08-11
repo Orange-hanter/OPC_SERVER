@@ -11,6 +11,7 @@ struct CliOptions {
     bool once{false};
     bool watch{false};
     int watch_period_ms{1000};
+    bool enable_opcua{true};
     bool help{false};
     std::vector<std::string> errors;
 };

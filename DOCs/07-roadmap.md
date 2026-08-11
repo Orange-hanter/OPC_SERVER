@@ -44,9 +44,10 @@
 
 ### Этап 3 — OPC UA Read
 
-- open62541 (+ C++ обёртка), построение дерева из `nodePath`
-- Read из TagStore, security None для стенда
-- Smoke-тест UA-клиентом
+- [x] open62541 (+ C++ обёртка `OpcUaServer`), построение дерева из `nodePath`
+- [x] Read из TagStore, security None для стенда
+- [x] Smoke-тест UA-клиентом (`tests/test_opc_ua_read.cpp`)
+- [x] CLI `--no-opcua`, проводка в `ServerRuntime` / `Application`
 
 ### Этап 4 — Subscriptions и Write
 
@@ -87,7 +88,7 @@
 | `Src/app.cpp` читает JSON и крутит пустой цикл | App загружает project, стартует poller + UA |
 | `DOCs/config.json` | Вытесняется `*.modbusproj.json` |
 | `Lib/modbuspp` submodule | Замена на Asio-client / libmodbus |
-| CMake без C++26/UA | C++26, FetchContent open62541, тесты |
+| CMake без UA | C++26, FetchContent open62541, OPC UA Read |
 
 ## Вне roadmap ядра
 

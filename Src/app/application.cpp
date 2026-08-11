@@ -1,5 +1,6 @@
 #include "app/application.hpp"
 
+#include "adapters/opc_ua_server.hpp"
 #include "adapters/stderr_log.hpp"
 #include "adapters/system_clock.hpp"
 #include "ports/i_metrics.hpp"
@@ -45,12 +46,18 @@ bool Application::init(const CliOptions& options) {
         return false;
     }
 
+    std::unique_ptr<ports::IOpcUaFacade> opcua;
+    if (options_.enable_opcua) {
+        opcua = std::make_unique<adapters::OpcUaServer>(log_.get());
+    }
+
     auto runtime = ServerRuntime::create(ServerRuntimeDeps{
         .project = *project,
         .clock = clock_.get(),
         .metrics = metrics_.get(),
         .log = log_.get(),
         .transport_factory = default_tcp_transport_factory(),
+        .opcua = std::move(opcua),
     });
     if (!runtime) {
         log_->error("app", runtime.error().message);

@@ -17,7 +17,7 @@
 |------|------|
 | Southbound | Modbus TCP (UDP позже) |
 | Core | Dispatcher, Translator, TagStore |
-| Northbound | OPC UA Server (в разработке по roadmap) |
+| Northbound | OPC UA Server (Read; Write/Subscriptions — этапы 4+) |
 | Engineering | `opc-map`, схемы и примеры карт |
 
 Норматив: [DOCs/08-engineering-standards.md](DOCs/08-engineering-standards.md), [ADR](DOCs/adr/README.md).
@@ -26,12 +26,12 @@
 
 ## Возможности
 
-**Сейчас:** проекты карт + `opc-map`, TagStore/Translator/Dispatcher, Modbus TCP transport, `ServerRuntime` composition root (`--project` / `--once` / `--watch`).
+**Сейчас:** проекты карт + `opc-map`, TagStore/Translator/Dispatcher, Modbus TCP, `ServerRuntime`, **OPC UA Read** (open62541, security None).
 
 **Целевые:**
 
 - Опрос Holding/Input/Coils по проектам карт
-- OPC UA Read / Write / Subscriptions для SCADA
+- OPC UA Write / Subscriptions для SCADA
 - Write-down, historian, frame debug, метрики
 
 OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
@@ -39,7 +39,7 @@ OPC Classic / DA не входят в ядро; граница — [DOCs/01-over
 ## Стек
 
 - **C++26** (fallback C++23), CMake, Ninja
-- Asio, open62541 (UA — следующие этапы), nlohmann/json  
+- open62541 (FetchContent), nlohmann/json; Asio reactor — следующий инкремент  
   Подробнее: [DOCs/05-tech-stack.md](DOCs/05-tech-stack.md)
 
 ## Документация
