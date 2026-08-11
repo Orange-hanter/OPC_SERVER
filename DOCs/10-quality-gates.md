@@ -9,6 +9,7 @@
 | Configure | `cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug` |
 | Build | `cmake --build build` |
 | Unit/component tests | `ctest --test-dir build --output-on-failure` — 100% pass |
+| CI | Workflow **CI** green on PR (GCC build+test minimum) |
 | Format | `clang-format -i` на изменённых `*.hpp/*.cpp`; diff format clean |
 | Architecture | Diff не нарушает таблицу зависимостей из [08](08-engineering-standards.md) |
 | ADR | Если меняется граница слоёв / concurrency / ошибки — есть ADR или update существующего |

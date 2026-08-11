@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build/publish (e.g. v0.1.0). Leave empty to only validate."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release artifacts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.ref }}
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].+)?$ ]]; then
+            echo "Tag '$TAG' does not match SemVer (vMAJOR.MINOR.PATCH[-prerelease])"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          PRERELEASE=false
+          if [[ "$VERSION" == *-* ]]; then
+            PRERELEASE=true
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "Resolved $TAG (version=$VERSION prerelease=$PRERELEASE)"
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake g++
+
+      - name: Configure & build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DBUILD_TESTING=ON \
+            -DOPC_SERVER_VERSION=${{ steps.version.outputs.version }}
+          cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --parallel
+
+      - name: Package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          NAME="opc-server-${VERSION}-linux-x64"
+          cmake --install build --prefix stage
+          mkdir -p "dist/${NAME}/bin" "dist/${NAME}/examples" "dist/${NAME}/docs"
+          cp -a stage/bin/* "dist/${NAME}/bin/"
+          cp README.md CONTRIBUTING.md "dist/${NAME}/"
+          cp DOCs/examples/demo-plant.modbusproj.json "dist/${NAME}/examples/"
+          cp DOCs/schemas/modbus-project.schema.json "dist/${NAME}/examples/"
+          cp DOCs/11-ci-and-releases.md "dist/${NAME}/docs/" 2>/dev/null || true
+          if [ -f LICENSE ]; then cp LICENSE "dist/${NAME}/"; fi
+          (cd dist && tar -czf "${NAME}.tar.gz" "${NAME}")
+          (cd dist && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256")
+          echo "ASSET_NAME=${NAME}.tar.gz" >> "$GITHUB_ENV"
+          ls -la dist/
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.version.outputs.tag }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: OPC_SERVER ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          body: |
+            ## OPC_SERVER ${{ steps.version.outputs.tag }}
+
+            Industrial Modbus → OPC UA gateway binaries (Linux x64).
+
+            ### Artifacts
+            - `${{ env.ASSET_NAME }}` — `OPC_SERVER`, `opc-map`, example project map
+            - checksum: `${{ env.ASSET_NAME }}.sha256`
+
+            ### Verify
+            ```bash
+            sha256sum -c ${{ env.ASSET_NAME }}.sha256
+            tar -xzf ${{ env.ASSET_NAME }}
+            ./opc-server-*/bin/opc-map validate ./opc-server-*/examples/demo-plant.modbusproj.json
+            ```
+
+            See [release strategy](https://github.com/Orange-hanter/OPC_SERVER/blob/master/DOCs/11-ci-and-releases.md).
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

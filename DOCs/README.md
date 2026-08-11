@@ -20,8 +20,10 @@
 | [08 — Engineering standards](08-engineering-standards.md) | Слои, naming, зависимости, DoD |
 | [09 — Scalability](09-scalability.md) | Изоляция endpoint, рост тегов/клиентов |
 | [10 — Quality gates](10-quality-gates.md) | Ворота merge / CI |
+| [11 — CI and releases](11-ci-and-releases.md) | Actions, артефакты, SemVer-релизы |
 | [ADR index](adr/README.md) | Architecture Decision Records |
 | [CONTRIBUTING](../CONTRIBUTING.md) | Как вносить изменения |
+| [CHANGELOG](../CHANGELOG.md) | История версий |
 
 ## Схемы и примеры
 

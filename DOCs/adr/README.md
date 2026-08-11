@@ -16,5 +16,6 @@ ADR фиксируют **существенные** решения: контек
 | [0009](0009-northbound-opcua-boundary.md) | Граница OPC UA vs Classic/DA | Accepted |
 | [0010](0010-scalability-model.md) | Модель масштабирования | Accepted |
 | [0011](0011-server-runtime.md) | ServerRuntime composition root | Accepted |
+| [0012](0012-ci-releases.md) | CI artifacts and SemVer releases | Accepted |
 
 Новый ADR: скопировать структуру (Context / Decision / Alternatives / Consequences), следующий номер, ссылка в этой таблице и в [08-engineering-standards](../08-engineering-standards.md) при необходимости.
