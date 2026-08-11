@@ -20,6 +20,7 @@ class OpcServerConan(ConanFile):
         "Lib/Json/*",
         "tools/*",
         "tests/*",
+        "DOCs/config.json",
         "DOCs/examples/*",
         "DOCs/schemas/*",
         "LICENSE",
