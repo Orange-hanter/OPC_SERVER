@@ -51,6 +51,17 @@ set(CMAKE_CXX_STANDARD ${OPC_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+configure_file(
+  ${CMAKE_SOURCE_DIR}/Src/app/version.hpp.in
+  ${CMAKE_BINARY_DIR}/generated/app/version.hpp
+  @ONLY
+)
+# Map cache version into the generated header content.
+file(WRITE ${CMAKE_BINARY_DIR}/generated/app/version.hpp
+"#pragma once
+#define OPC_SERVER_VERSION_STRING \"${OPC_SERVER_VERSION}\"
+")
+
 # --- open62541 (OPC UA) ---
 set(UA_ENABLE_AMALGAMATION OFF CACHE BOOL "" FORCE)
 set(UA_ENABLE_ENCRYPTION OFF CACHE BOOL "" FORCE)
@@ -70,7 +81,12 @@ FetchContent_Declare(
   GIT_TAG        v1.4.11
   GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(open62541)
+FetchContent_GetProperties(open62541)
+if(NOT open62541_POPULATED)
+  FetchContent_Populate(open62541)
+  # Keep open62541 out of `cmake --install` prefix (binaries/examples only).
+  add_subdirectory(${open62541_SOURCE_DIR} ${open62541_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif()
 
 add_library(opc_project
   Src/project/load.cpp
@@ -99,7 +115,7 @@ add_library(opc_adapters
   Src/adapters/opc_ua_server.cpp
 )
 add_library(opc::adapters ALIAS opc_adapters)
-target_link_libraries(opc_adapters PUBLIC opc::core open62541)
+target_link_libraries(opc_adapters PUBLIC opc::project open62541)
 target_include_directories(opc_adapters PUBLIC ${CMAKE_SOURCE_DIR}/Src)
 
 add_library(opc_app
@@ -109,26 +125,37 @@ add_library(opc_app
 )
 add_library(opc::app ALIAS opc_app)
 target_link_libraries(opc_app PUBLIC opc::adapters opc::core opc::project)
-target_include_directories(opc_app PUBLIC ${CMAKE_SOURCE_DIR}/Src)
+target_include_directories(opc_app
+  PUBLIC
+    ${CMAKE_SOURCE_DIR}/Src
+    ${CMAKE_BINARY_DIR}/generated
+)
 
 add_executable(OPC_SERVER
   Src/main.cpp
 )
 target_link_libraries(OPC_SERVER PRIVATE opc::app)
+target_include_directories(OPC_SERVER PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
 add_executable(opc-map
   tools/opc-map/main.cpp
 )
 target_link_libraries(opc-map PRIVATE opc::project)
 
+foreach(_opc_tgt opc_project opc_core opc_adapters opc_app OPC_SERVER opc-map)
+  target_compile_options(${_opc_tgt} PRIVATE -Wall -Wextra -Wpedantic)
+endforeach()
+
 install(TARGETS OPC_SERVER opc-map
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  COMPONENT opc-server
 )
 
 install(FILES
   ${CMAKE_SOURCE_DIR}/DOCs/examples/demo-plant.modbusproj.json
   ${CMAKE_SOURCE_DIR}/DOCs/schemas/modbus-project.schema.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/opc-server/examples
+  COMPONENT opc-server
 )
 
 if(BUILD_TESTING)
@@ -150,7 +177,9 @@ if(BUILD_TESTING)
     tests/test_opc_ua_write_subs.cpp
   )
   target_link_libraries(opc_tests PRIVATE opc::app opc::adapters opc::core opc::project Catch2::Catch2WithMain open62541)
+  target_include_directories(opc_tests PRIVATE ${CMAKE_BINARY_DIR}/generated)
   target_compile_definitions(opc_tests PRIVATE OPC_SERVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+  target_compile_options(opc_tests PRIVATE -Wall -Wextra -Wpedantic)
 
   include(Catch)
   catch_discover_tests(opc_tests)

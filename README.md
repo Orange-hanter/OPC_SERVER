@@ -64,9 +64,22 @@ ctest --test-dir build --output-on-failure
 ```
 
 ```bash
+./build/OPC_SERVER --version
 ./build/opc-map validate DOCs/examples/demo-plant.modbusproj.json
 ./build/opc-map migrate-legacy DOCs/config.json -o /tmp/migrated.modbusproj.json
 ```
+
+### Установка
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PWD/stage
+cmake --build build
+cmake --install build --component opc-server
+./stage/bin/OPC_SERVER --version
+./stage/bin/opc-map validate ./stage/share/opc-server/examples/demo-plant.modbusproj.json
+```
+
+(`--component opc-server` excludes FetchContent open62541 headers/libs from the prefix.)
 
 Без C++26 CMake откатывается на **C++23** с предупреждением.
 

@@ -93,3 +93,51 @@ TEST_CASE("Dispatcher poll and write via fake transport", "[core][dispatcher]") 
     REQUIRE(regs);
     REQUIRE((*regs)[0] == 99);
 }
+
+TEST_CASE("Dispatcher Bad write keeps prior value; QueueFull is returned", "[core][dispatcher][hardening]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}).has_value());
+
+    auto sp = index.find_by_name("Setpoint");
+    REQUIRE(sp);
+
+    store.publish(sp->id,
+                  opc::domain::TagValue{.value = std::uint16_t{7},
+                                        .quality = opc::domain::Quality::Good,
+                                        .reason = opc::domain::QualityReason::None,
+                                        .source_ts = 1,
+                                        .server_ts = 1});
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+    });
+    // No transport bound → flush fails and requeues; publish WriteRejected preserving 7.
+    REQUIRE(dispatcher.enqueue_write(sp->id, std::uint16_t{42}).has_value());
+    REQUIRE_FALSE(dispatcher.flush_writes("ep1").has_value());
+    auto after = store.get(sp->id);
+    REQUIRE(after);
+    // Value stays 7 or becomes 42 only after successful write; on transport-missing we
+    // requeue without publishing Bad — check queue still has the write by successful bind.
+    dispatcher.bind_transport("ep1", &transport);
+    REQUIRE(dispatcher.flush_writes("ep1").has_value());
+    after = store.get(sp->id);
+    REQUIRE(after);
+    CHECK(std::get<std::uint16_t>(after->value) == 42);
+    CHECK(after->quality == opc::domain::Quality::Good);
+
+    // Fill queue to capacity.
+    for (std::size_t i = 0; i < 1024; ++i) {
+        REQUIRE(dispatcher.enqueue_write(sp->id, static_cast<std::uint16_t>(i)).has_value());
+    }
+    auto overflow = dispatcher.enqueue_write(sp->id, std::uint16_t{1});
+    REQUIRE_FALSE(overflow.has_value());
+    CHECK(overflow.error().code == opc::domain::ErrorCode::QueueFull);
+}

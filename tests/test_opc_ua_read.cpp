@@ -24,9 +24,11 @@
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 #include "core/runtime_index.hpp"
 #include "core/tag_store.hpp"
+#include "ports/i_opc_ua_facade.hpp"
 
 using opc::adapters::ManualClock;
 using opc::adapters::OpcUaServer;
@@ -115,7 +117,11 @@ TEST_CASE("OpcUaServer exposes TagStore values via Read", "[opcua][read]") {
 
     opc::core::RuntimeIndex index = opc::core::RuntimeIndex::build(project);
     opc::core::TagStore store;
-    REQUIRE(server.bind_index(index, store));
+    std::vector<opc::ports::OpcUaTagSpec> specs;
+    for (const auto& b : index.tags()) {
+        specs.push_back({.id = b.id, .tag = b.tag});
+    }
+    REQUIRE(server.bind_tags(store, specs));
 
     auto level = index.find_by_name("Tank1.Level");
     auto status = index.find_by_name("Tank1.Status");

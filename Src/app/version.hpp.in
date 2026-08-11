@@ -1,0 +1,6 @@
+#pragma once
+
+// Generated / injected by CMake. Fallback for IDEs without configure.
+#ifndef OPC_SERVER_VERSION_STRING
+#define OPC_SERVER_VERSION_STRING "0.0.0-dev"
+#endif

@@ -4,7 +4,7 @@
 
 ## Этапы
 
-### Этап 0 — Каркас документации и формата проекта (текущий)
+### Этап 0 — Каркас документации и формата проекта
 
 - [x] Обзор, архитектура, стек, модель UA, ops-доки
 - [x] JSON Schema и пример `*.modbusproj.json`
@@ -37,7 +37,7 @@
 ### Этап 2.5 — Runtime infrastructure
 
 - [x] `ServerRuntime` composition root + `TransportFactory`
-- [x] `Application` CLI (`--project`, `--once`, `--watch`)
+- [x] `Application` CLI (`--project`, `--once`, `--watch`, `--version`)
 - [x] `ILog`, `ManualClock`, StderrLog
 - [x] Bootstrap tests with Fake transport
 - [ ] Asio reactor loop (replace sleep) — следующий инкремент
@@ -45,16 +45,23 @@
 ### Этап 3 — OPC UA Read
 
 - [x] open62541 (+ C++ обёртка `OpcUaServer`), построение дерева из `nodePath`
-- [x] Read из TagStore, security None для стенда
+- [x] Read из TagStore (DataSource), security None для стенда
 - [x] Smoke-тест UA-клиентом (`tests/test_opc_ua_read.cpp`)
 - [x] CLI `--no-opcua`, проводка в `ServerRuntime` / `Application`
 
 ### Этап 4 — Subscriptions и Write
 
-- [x] MonitoredItems / Publish (TagStore → `writeDataValue` → UA notifications)
-- [x] Write path → Dispatcher queue → FC06/16/05/15 (`OpcUaServer` ValueCallback)
+- [x] MonitoredItems / Publish (DataSource sampling + TagStore)
+- [x] Write path → Dispatcher queue → FC06/16/05 (`OpcUaServer` DataSource write)
 - [x] Политика `writes_first`, маппинг StatusCode / WritePending
 - [x] Smoke-тесты UA Write + Subscription (`tests/test_opc_ua_write_subs.cpp`)
+
+### Этап 4.5 — Hardening (ревью Stages 1–4)
+
+- [x] ADR-0013: DataSource, facade без `dynamic_cast`, preserve value, write-queue bounds
+- [x] `cmake --install` + `OPC_SERVER --version`
+- [ ] Asio reactor / убрать sleep (перенос из 2.5)
+- [ ] TSan CI job
 
 ### Этап 5 — Historian и Debug
 
@@ -86,10 +93,10 @@
 
 | Сейчас | Цель |
 |--------|------|
-| `Src/app.cpp` читает JSON и крутит пустой цикл | App загружает project, стартует poller + UA |
-| `DOCs/config.json` | Вытесняется `*.modbusproj.json` |
-| `Lib/modbuspp` submodule | Замена на Asio-client / libmodbus |
-| CMake без UA | C++26, FetchContent open62541, OPC UA Read |
+| `ServerRuntime` + OPC UA Read/Write/Subs | Asio reactor, historian, SignAndEncrypt |
+| `*.modbusproj.json` + `opc-map` | doctor / import-csv / редактор |
+| Sync `ModbusTcpTransport` | Asio strand-per-endpoint |
+| open62541 FetchContent | Опционально pin hash / system package |
 
 ## Вне roadmap ядра
 

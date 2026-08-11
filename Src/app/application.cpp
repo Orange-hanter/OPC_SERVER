@@ -3,6 +3,7 @@
 #include "adapters/opc_ua_server.hpp"
 #include "adapters/stderr_log.hpp"
 #include "adapters/system_clock.hpp"
+#include "app/version.hpp"
 #include "ports/i_metrics.hpp"
 
 #include <chrono>
@@ -29,6 +30,10 @@ bool Application::init(const CliOptions& options) {
     }
     if (options_.help) {
         print_usage(std::cout);
+        return false;
+    }
+    if (options_.version) {
+        std::cout << "OPC_SERVER " << OPC_SERVER_VERSION_STRING << '\n';
         return false;
     }
 

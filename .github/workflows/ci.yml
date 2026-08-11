@@ -46,13 +46,12 @@ jobs:
 
       - name: Package binaries
         run: |
-          cmake --install build --prefix stage
+          cmake --install build --prefix stage --component opc-server
           mkdir -p dist/opc-server-linux-x64
           cp -a stage/bin/* dist/opc-server-linux-x64/
           cp README.md LICENSE dist/opc-server-linux-x64/
           mkdir -p dist/opc-server-linux-x64/examples
-          cp DOCs/examples/demo-plant.modbusproj.json dist/opc-server-linux-x64/examples/
-          cp DOCs/schemas/modbus-project.schema.json dist/opc-server-linux-x64/examples/
+          cp -a stage/share/opc-server/examples/* dist/opc-server-linux-x64/examples/
           (cd dist && tar -czf opc-server-linux-x64.tar.gz opc-server-linux-x64)
           (cd dist && sha256sum opc-server-linux-x64.tar.gz > opc-server-linux-x64.tar.gz.sha256)
           ls -la dist/
