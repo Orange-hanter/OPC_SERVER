@@ -16,23 +16,8 @@ permissions:
 
 jobs:
   build-test:
-    name: Build & test (${{ matrix.os }} / ${{ matrix.compiler }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            compiler: g++
-            cxx: g++
-            cmake_extra: ""
-            artifact_name: opc-server-linux-x64
-          - os: ubuntu-24.04
-            compiler: clang++
-            cxx: clang++
-            # Use libstdc++ so std::expected (C++23) is available on Ubuntu runners.
-            cmake_extra: "-DCMAKE_CXX_FLAGS=-stdlib=libstdc++"
-            artifact_name: opc-server-linux-x64-clang
+    name: Build & test (ubuntu-24.04 / g++)
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -44,15 +29,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake g++
-          if [ "${{ matrix.compiler }}" = "clang++" ]; then
-            sudo apt-get install -y clang
-          fi
 
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_CXX_COMPILER=g++ \
             -DBUILD_TESTING=ON
 
       - name: Build
@@ -62,26 +44,24 @@ jobs:
         run: ctest --test-dir build --output-on-failure --parallel
 
       - name: Package binaries
-        if: matrix.compiler == 'g++'
         run: |
           cmake --install build --prefix stage
-          mkdir -p dist/${{ matrix.artifact_name }}
-          cp -a stage/bin/* dist/${{ matrix.artifact_name }}/
-          cp README.md LICENSE dist/${{ matrix.artifact_name }}/ 2>/dev/null || cp README.md dist/${{ matrix.artifact_name }}/
-          mkdir -p dist/${{ matrix.artifact_name }}/examples
-          cp DOCs/examples/demo-plant.modbusproj.json dist/${{ matrix.artifact_name }}/examples/
-          cp DOCs/schemas/modbus-project.schema.json dist/${{ matrix.artifact_name }}/examples/
-          (cd dist && tar -czf ${{ matrix.artifact_name }}.tar.gz ${{ matrix.artifact_name }})
-          (cd dist && sha256sum ${{ matrix.artifact_name }}.tar.gz > ${{ matrix.artifact_name }}.tar.gz.sha256)
+          mkdir -p dist/opc-server-linux-x64
+          cp -a stage/bin/* dist/opc-server-linux-x64/
+          cp README.md LICENSE dist/opc-server-linux-x64/
+          mkdir -p dist/opc-server-linux-x64/examples
+          cp DOCs/examples/demo-plant.modbusproj.json dist/opc-server-linux-x64/examples/
+          cp DOCs/schemas/modbus-project.schema.json dist/opc-server-linux-x64/examples/
+          (cd dist && tar -czf opc-server-linux-x64.tar.gz opc-server-linux-x64)
+          (cd dist && sha256sum opc-server-linux-x64.tar.gz > opc-server-linux-x64.tar.gz.sha256)
           ls -la dist/
 
       - name: Upload build artifacts
-        if: matrix.compiler == 'g++'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: opc-server-linux-x64
           path: |
-            dist/${{ matrix.artifact_name }}.tar.gz
-            dist/${{ matrix.artifact_name }}.tar.gz.sha256
+            dist/opc-server-linux-x64.tar.gz
+            dist/opc-server-linux-x64.tar.gz.sha256
           if-no-files-found: error
           retention-days: 14

@@ -16,8 +16,8 @@
 
 ### Jobs
 
-- **Ubuntu 24.04 + g++**: Release build, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
-- **Ubuntu 24.04 + clang++**: build + test (compiler portability; no package artifact).
+- **Ubuntu 24.04 + g++** (primary): Release build, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
+- Clang is supported locally with `-DCMAKE_CXX_FLAGS=-stdlib=libstdc++` when libstdc++ provides `std::expected`; not required in CI until runners ship a complete C++23 STL for Clang.
 
 Artifacts from CI are **not** GitHub Releases — they are intermediate build products for debugging/QA.
 
