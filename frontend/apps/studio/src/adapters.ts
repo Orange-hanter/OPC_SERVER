@@ -216,12 +216,31 @@ class MockOpcUaMonitor implements OpcUaMonitor {
 class TauriOpcUaMonitor implements OpcUaMonitor {
   private listeners = new Set<(event: MonitorEvent) => void>()
   private unlisten: (() => void) | null = null
+  private pendingValues = new Map<string, Extract<MonitorEvent, { type: 'value' }>>()
+  private animationFrame: number | null = null
+
+  private emit(event: MonitorEvent) {
+    if (event.type !== 'value') {
+      this.listeners.forEach((listener) => listener(event))
+      return
+    }
+    this.pendingValues.set(event.value.nodeId, event)
+    if (this.animationFrame !== null) return
+    this.animationFrame = requestAnimationFrame(() => {
+      const batch = [...this.pendingValues.values()]
+      this.pendingValues.clear()
+      this.animationFrame = null
+      batch.forEach((valueEvent) => {
+        this.listeners.forEach((listener) => listener(valueEvent))
+      })
+    })
+  }
 
   private async ensureListener() {
     if (this.unlisten) return
     const { listen } = await import('@tauri-apps/api/event')
     this.unlisten = await listen<MonitorEvent>('opc-monitor://event', ({ payload }) => {
-      this.listeners.forEach((listener) => listener(payload))
+      this.emit(payload)
     })
   }
 

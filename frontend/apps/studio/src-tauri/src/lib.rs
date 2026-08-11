@@ -245,6 +245,8 @@ async fn ensure_monitor(app: &AppHandle, state: &MonitorState) -> Result<(), Str
         .map_err(|error| error.to_string())?
         .spawn()
         .map_err(|error| error.to_string())?;
+    *guard = Some(child);
+    drop(guard);
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         let mut pending = String::new();
@@ -286,12 +288,17 @@ async fn ensure_monitor(app: &AppHandle, state: &MonitorState) -> Result<(), Str
                             "message": format!("opc-monitor exited: {:?}", payload.code)
                         }),
                     );
+                    app_handle
+                        .state::<MonitorState>()
+                        .child
+                        .lock()
+                        .await
+                        .take();
                 }
                 _ => {}
             }
         }
     });
-    *guard = Some(child);
     Ok(())
 }
 
