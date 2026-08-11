@@ -25,7 +25,6 @@ add_library(opc_project
   Src/project/migrate_legacy.cpp
 )
 add_library(opc::project ALIAS opc_project)
-
 target_include_directories(opc_project
   PUBLIC
     ${CMAKE_SOURCE_DIR}/Src
@@ -36,21 +35,30 @@ add_library(opc_core
   Src/core/tag_store.cpp
   Src/core/translator.cpp
   Src/core/dispatcher.cpp
+  Src/core/runtime_index.cpp
 )
 add_library(opc::core ALIAS opc_core)
 target_link_libraries(opc_core PUBLIC opc::project)
 target_include_directories(opc_core PUBLIC ${CMAKE_SOURCE_DIR}/Src)
 
+add_library(opc_adapters
+  Src/adapters/modbus_tcp_transport.cpp
+)
+add_library(opc::adapters ALIAS opc_adapters)
+target_link_libraries(opc_adapters PUBLIC opc::core)
+target_include_directories(opc_adapters PUBLIC ${CMAKE_SOURCE_DIR}/Src)
+
 if(OPC_CXX_STANDARD EQUAL 23)
   target_compile_features(opc_project PUBLIC cxx_std_23)
   target_compile_features(opc_core PUBLIC cxx_std_23)
+  target_compile_features(opc_adapters PUBLIC cxx_std_23)
 endif()
 
 add_executable(OPC_SERVER
   Src/main.cpp
   Src/app.cpp
 )
-target_link_libraries(OPC_SERVER PRIVATE opc::core opc::project)
+target_link_libraries(OPC_SERVER PRIVATE opc::adapters opc::core opc::project)
 
 add_executable(opc-map
   tools/opc-map/main.cpp
@@ -69,8 +77,10 @@ if(BUILD_TESTING)
     tests/test_project.cpp
     tests/test_tag_store.cpp
     tests/test_fake_modbus.cpp
+    tests/test_translator.cpp
+    tests/test_dispatcher.cpp
   )
-  target_link_libraries(opc_tests PRIVATE opc::core opc::project Catch2::Catch2WithMain)
+  target_link_libraries(opc_tests PRIVATE opc::adapters opc::core opc::project Catch2::Catch2WithMain)
   target_compile_definitions(opc_tests PRIVATE OPC_SERVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
   include(Catch)

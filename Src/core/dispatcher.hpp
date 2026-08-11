@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/runtime_index.hpp"
 #include "domain/types.hpp"
 #include "ports/i_clock.hpp"
 #include "ports/i_metrics.hpp"
@@ -10,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace opc::core {
 
@@ -18,7 +20,7 @@ namespace opc::core {
 class Dispatcher {
 public:
     struct Dependencies {
-        std::shared_ptr<const project::Project> project;
+        RuntimeIndex index;
         ports::ITagStore* tag_store{nullptr};
         ports::IClock* clock{nullptr};
         ports::IMetrics* metrics{nullptr};
@@ -29,17 +31,34 @@ public:
     Dispatcher(const Dispatcher&) = delete;
     Dispatcher& operator=(const Dispatcher&) = delete;
 
-    /// Bind transport for endpoint id (must be used only on that endpoint's strand).
     void bind_transport(std::string endpoint_id, ports::IModbusTransport* transport);
 
-    /// Called by reactor timers / strand: execute due poll work for endpoint.
+    /// Execute due poll groups for endpoint (period-aware).
     domain::Result<void> poll_due(std::string_view endpoint_id, domain::TimestampMs now);
 
-    /// Enqueue write from northbound; executed on endpoint strand with priority (ADR-0002).
     domain::Result<void> enqueue_write(domain::TagId tag_id, domain::ScalarValue value);
 
+    /// Drain write queue for endpoint (call on endpoint strand before/with poll).
+    domain::Result<void> flush_writes(std::string_view endpoint_id);
+
 private:
+    domain::Result<void> poll_group(const project::PollGroup& group,
+                                    ports::IModbusTransport& transport,
+                                    domain::TimestampMs now);
+
+    domain::Result<void> poll_tag(const TagBinding& binding,
+                                  ports::IModbusTransport& transport,
+                                  domain::TimestampMs now);
+
     Dependencies deps_;
+    std::unordered_map<std::string, ports::IModbusTransport*> transports_;
+    std::unordered_map<std::string, domain::TimestampMs> last_poll_ms_;
+
+    struct PendingWrite {
+        domain::TagId tag_id{0};
+        domain::ScalarValue value{};
+    };
+    std::unordered_map<std::string, std::vector<PendingWrite>> write_queues_;
 };
 
 }  // namespace opc::core

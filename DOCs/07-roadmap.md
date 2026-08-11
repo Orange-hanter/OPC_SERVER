@@ -27,11 +27,12 @@
 
 ### Этап 2 — ModbusPoller + Translator (по ADR)
 
-- Реализация `Translator::decode/encode` + property-тесты byte order
-- Asio `ModbusTcpTransport` за `IModbusTransport`
-- `Dispatcher::poll_due` на strand per endpoint + Fake component tests
-- TagStore quality/stale в цикле опроса
-- Вывод watchlist в консоль (закрывает пункты из [tasks.md](tasks.md))
+- [x] Реализация `Translator::decode/encode` + тесты byte order
+- [x] `ModbusTcpTransport` (sync TCP/MBAP за `IModbusTransport`; Asio reactor — следующий инкремент)
+- [x] `Dispatcher::poll_due` + write queue (`writes_first`) + Fake component tests
+- [x] `RuntimeIndex` (TagId ↔ project tags)
+- [ ] Полный reactor (Asio io_context + strand per endpoint + timers)
+- [ ] Watchlist в консоли / app composition root
 
 ### Этап 3 — OPC UA Read
 
