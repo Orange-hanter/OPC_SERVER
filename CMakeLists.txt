@@ -1,10 +1,13 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(OPC_SERVER VERSION 0.1.0 LANGUAGES CXX)
+# Allow release workflow to inject SemVer without editing this file.
+set(OPC_SERVER_VERSION "0.1.0" CACHE STRING "OPC_SERVER package version")
+project(OPC_SERVER VERSION ${OPC_SERVER_VERSION} LANGUAGES CXX)
 
 include(CheckCXXCompilerFlag)
 include(FetchContent)
 include(CTest)
+include(GNUInstallDirs)
 
 check_cxx_compiler_flag("-std=c++26" OPC_HAS_CXX26)
 if(OPC_HAS_CXX26)
@@ -73,6 +76,16 @@ add_executable(opc-map
   tools/opc-map/main.cpp
 )
 target_link_libraries(opc-map PRIVATE opc::project)
+
+install(TARGETS OPC_SERVER opc-map
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES
+  ${CMAKE_SOURCE_DIR}/DOCs/examples/demo-plant.modbusproj.json
+  ${CMAKE_SOURCE_DIR}/DOCs/schemas/modbus-project.schema.json
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/opc-server/examples
+)
 
 if(BUILD_TESTING)
   FetchContent_Declare(

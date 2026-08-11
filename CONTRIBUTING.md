@@ -26,11 +26,18 @@ clang-format -i $(git ls-files '*.cpp' '*.hpp' | grep -v Lib/)
 Не подключайте `adapters/` из `core/`. Composition root — только `Src/app` / `main`.  
 Инженерный CLI (`tools/opc-map`) не должен линковаться с runtime poller/UA.
 
-## Коммиты / PR
+## PR checklist
 
-- Одно логическое изменение на commit по возможности.
-- PR описывает: мотивацию, какие ADR затронуты, как тестировали.
-- Чеклист: [DOCs/10-quality-gates.md](DOCs/10-quality-gates.md).
+См. [DOCs/10-quality-gates.md](DOCs/10-quality-gates.md).
+
+CI на PR обязателен: workflow **CI** должен быть зелёным.
+
+## Releases
+
+Не публикуйте бинарники вручную с ноутбука как «официальный» релиз.  
+Релиз = SemVer-тег → workflow **Release** (см. [DOCs/11-ci-and-releases.md](DOCs/11-ci-and-releases.md)).
+
+Перед тегом обновите [CHANGELOG.md](CHANGELOG.md).
 
 ## Язык
 
