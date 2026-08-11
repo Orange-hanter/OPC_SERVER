@@ -31,22 +31,18 @@ jobs:
           sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
 
       - name: Configure
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=g++ \
-            -DBUILD_TESTING=ON
+        run: cmake --preset ci -DCMAKE_CXX_COMPILER=g++
 
       - name: Build
-        run: cmake --build build --parallel
+        run: cmake --build --preset ci
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure --parallel 2 --timeout 120
+        run: ctest --preset ci --timeout 120
         # OPC UA smoke tests bind ephemeral ports; keep modest parallelism.
 
       - name: Package binaries
         run: |
-          cmake --install build --prefix stage --component opc-server
+          cmake --install build/ci --prefix stage --component opc-server
           mkdir -p dist/opc-server-linux-x64
           cp -a stage/bin/* dist/opc-server-linux-x64/
           cp README.md LICENSE dist/opc-server-linux-x64/
@@ -65,3 +61,27 @@ jobs:
             dist/opc-server-linux-x64.tar.gz.sha256
           if-no-files-found: error
           retention-days: 14
+
+  conan:
+    name: Conan 2 dependency provider
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+          python3 -m pip install --user conan
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Build and test through Conan
+        run: |
+          conan build . \
+            -s build_type=Debug \
+            -s compiler.cppstd=23 \
+            --build=missing

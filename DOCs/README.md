@@ -21,6 +21,7 @@
 | [09 — Scalability](09-scalability.md) | Изоляция endpoint, рост тегов/клиентов |
 | [10 — Quality gates](10-quality-gates.md) | Ворота merge / CI |
 | [11 — CI and releases](11-ci-and-releases.md) | Actions, артефакты, SemVer-релизы |
+| [12 — Современный CMake и Conan 2](12-modern-cmake.md) | Presets, target-based настройки, санитайзеры, CPack и package manager |
 | [ADR index](adr/README.md) | Architecture Decision Records |
 | [CONTRIBUTING](../CONTRIBUTING.md) | Как вносить изменения |
 | [CHANGELOG](../CHANGELOG.md) | История версий |

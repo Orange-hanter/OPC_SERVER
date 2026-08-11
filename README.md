@@ -38,8 +38,8 @@ OPC Classic / DA не входят в ядро; граница — [DOCs/01-over
 
 ## Стек
 
-- **C++26** (fallback C++23), CMake, Ninja
-- open62541 (FetchContent), nlohmann/json; Asio reactor — следующий инкремент  
+- **C++26** (fallback C++23), CMake 3.28, Ninja, CMake Presets
+- open62541 (Conan 2 или FetchContent), nlohmann/json; Asio reactor — следующий инкремент  
   Подробнее: [DOCs/05-tech-stack.md](DOCs/05-tech-stack.md)
 
 ## Документация
@@ -52,21 +52,21 @@ OPC Classic / DA не входят в ядро; граница — [DOCs/01-over
 | Проекты карт | [DOCs/03-modbus-projects.md](DOCs/03-modbus-projects.md) |
 | Пример | [DOCs/examples/demo-plant.modbusproj.json](DOCs/examples/demo-plant.modbusproj.json) |
 | Roadmap | [DOCs/07-roadmap.md](DOCs/07-roadmap.md) |
+| Современный CMake и Conan | [DOCs/12-modern-cmake.md](DOCs/12-modern-cmake.md) |
 
 ## Сборка
 
 ```bash
-git clone --recursive https://github.com/Orange-hanter/OPC_SERVER
+git clone https://github.com/Orange-hanter/OPC_SERVER
 cd OPC_SERVER
-cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake --workflow --preset dev
 ```
 
 ```bash
-./build/OPC_SERVER --version
-./build/opc-map validate DOCs/examples/demo-plant.modbusproj.json
-./build/opc-map migrate-legacy DOCs/config.json -o /tmp/migrated.modbusproj.json
+./build/dev/OPC_SERVER --version
+./build/dev/tools/opc-map/opc-map validate DOCs/examples/demo-plant.modbusproj.json
+./build/dev/tools/opc-map/opc-map doctor DOCs/examples/demo-plant.modbusproj.json
+./build/dev/tools/opc-map/opc-map migrate-legacy DOCs/config.json -o /tmp/migrated.modbusproj.json
 ```
 
 ### Установка
@@ -82,6 +82,8 @@ cmake --install build --component opc-server
 (`--component opc-server` excludes FetchContent open62541 headers/libs from the prefix.)
 
 Без C++26 CMake откатывается на **C++23** с предупреждением.
+Режимы ASan/UBSan, unity build, PCH, IPO/CPack и сборка через Conan 2 описаны
+в [практикуме по CMake](DOCs/12-modern-cmake.md).
 
 ## CI и релизы
 

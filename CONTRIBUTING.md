@@ -9,11 +9,11 @@
 ## Workflow
 
 ```bash
-cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
-ctest --test-dir build --output-on-failure
-./build/opc-map validate DOCs/examples/demo-plant.modbusproj.json
+cmake --workflow --preset dev
+./build/dev/tools/opc-map/opc-map validate DOCs/examples/demo-plant.modbusproj.json
 ```
+
+Другие профили и Conan 2: [DOCs/12-modern-cmake.md](DOCs/12-modern-cmake.md).
 
 Форматирование:
 
