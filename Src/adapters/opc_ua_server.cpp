@@ -8,6 +8,14 @@
 #include <variant>
 
 namespace opc::adapters {
+
+struct OpcUaWriteNodeContext {
+    OpcUaServer* self{nullptr};
+    domain::TagId tag_id{0};
+    project::TagType type{project::TagType::UInt16};
+    bool writable{false};
+};
+
 namespace {
 
 void log_msg(ports::ILog* log, ports::LogLevel level, std::string_view msg) {
@@ -147,6 +155,72 @@ void log_msg(ports::ILog* log, ports::LogLevel level, std::string_view msg) {
     return false;
 }
 
+[[nodiscard]] std::optional<domain::ScalarValue> variant_to_scalar(project::TagType type,
+                                                                   const UA_Variant& variant) {
+    if (!variant.type || !variant.data) {
+        return std::nullopt;
+    }
+    switch (type) {
+    case project::TagType::Bool:
+        if (variant.type != &UA_TYPES[UA_TYPES_BOOLEAN]) {
+            return std::nullopt;
+        }
+        return static_cast<bool>(*static_cast<UA_Boolean*>(variant.data));
+    case project::TagType::UInt16:
+        if (variant.type != &UA_TYPES[UA_TYPES_UINT16]) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint16_t>(*static_cast<UA_UInt16*>(variant.data));
+    case project::TagType::Int16:
+        if (variant.type != &UA_TYPES[UA_TYPES_INT16]) {
+            return std::nullopt;
+        }
+        return static_cast<std::int16_t>(*static_cast<UA_Int16*>(variant.data));
+    case project::TagType::UInt32:
+        if (variant.type != &UA_TYPES[UA_TYPES_UINT32]) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint32_t>(*static_cast<UA_UInt32*>(variant.data));
+    case project::TagType::Int32:
+        if (variant.type != &UA_TYPES[UA_TYPES_INT32]) {
+            return std::nullopt;
+        }
+        return static_cast<std::int32_t>(*static_cast<UA_Int32*>(variant.data));
+    case project::TagType::Float32:
+        if (variant.type != &UA_TYPES[UA_TYPES_FLOAT]) {
+            return std::nullopt;
+        }
+        return static_cast<float>(*static_cast<UA_Float*>(variant.data));
+    case project::TagType::Float64:
+        if (variant.type != &UA_TYPES[UA_TYPES_DOUBLE]) {
+            return std::nullopt;
+        }
+        return static_cast<double>(*static_cast<UA_Double*>(variant.data));
+    }
+    return std::nullopt;
+}
+
+void on_client_write(UA_Server* /*server*/,
+                     const UA_NodeId* /*session_id*/,
+                     void* /*session_context*/,
+                     const UA_NodeId* /*node_id*/,
+                     void* node_context,
+                     const UA_NumericRange* /*range*/,
+                     const UA_DataValue* data) {
+    auto* ctx = static_cast<OpcUaWriteNodeContext*>(node_context);
+    if (ctx == nullptr || ctx->self == nullptr || data == nullptr || !data->hasValue) {
+        return;
+    }
+    if (!ctx->writable) {
+        return;
+    }
+    auto scalar = variant_to_scalar(ctx->type, data->value);
+    if (!scalar) {
+        return;
+    }
+    ctx->self->handle_client_write(ctx->tag_id, ctx->type, std::move(*scalar));
+}
+
 }  // namespace
 
 OpcUaServer::OpcUaServer(ports::ILog* log) : log_(log) {}
@@ -283,6 +357,7 @@ void OpcUaServer::stop() {
     folder_ids_.clear();
     tag_node_ids_.clear();
     tag_types_.clear();
+    node_contexts_.clear();
     {
         std::lock_guard lock(pending_mutex_);
         pending_.clear();
@@ -364,6 +439,7 @@ domain::Result<void> OpcUaServer::add_variable(domain::TagId tag_id,
     if (tag.writable) {
         attr.accessLevel = static_cast<UA_Byte>(attr.accessLevel | UA_ACCESSLEVELMASK_WRITE);
     }
+    attr.userAccessLevel = attr.accessLevel;
     UA_Variant_init(&attr.value);
     attr.value.type = data_type;
 
@@ -393,8 +469,21 @@ domain::Result<void> OpcUaServer::add_variable(domain::TagId tag_id,
             domain::Error{domain::ErrorCode::Internal, msg.str(), "adapters.opcua", false});
     }
 
+    auto ctx = std::make_unique<OpcUaWriteNodeContext>();
+    ctx->self = this;
+    ctx->tag_id = tag_id;
+    ctx->type = tag.type;
+    ctx->writable = tag.writable;
+    UA_Server_setNodeContext(server_, out_id, ctx.get());
+
+    UA_ValueCallback callback;
+    callback.onRead = nullptr;
+    callback.onWrite = on_client_write;
+    UA_Server_setVariableNode_valueCallback(server_, out_id, callback);
+
     tag_node_ids_.emplace(tag_id, out_id.identifier.numeric);
     tag_types_.emplace(tag_id, tag.type);
+    node_contexts_.push_back(std::move(ctx));
     UA_NodeId_clear(&out_id);
     return {};
 }
@@ -482,6 +571,52 @@ void OpcUaServer::serve_async() {
     log_msg(log_, ports::LogLevel::Info, "OPC UA event loop thread started");
 }
 
+void OpcUaServer::set_write_handler(WriteHandler handler) {
+    write_handler_ = std::move(handler);
+}
+
+std::optional<std::uint32_t> OpcUaServer::node_numeric_id(domain::TagId id) const {
+    const auto it = tag_node_ids_.find(id);
+    if (it == tag_node_ids_.end()) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+void OpcUaServer::handle_client_write(domain::TagId id,
+                                      project::TagType /*type*/,
+                                      domain::ScalarValue value) {
+    if (applying_store_update_) {
+        return;
+    }
+    if (!write_handler_) {
+        log_msg(log_, ports::LogLevel::Warn, "UA write ignored: no write handler");
+        return;
+    }
+
+    if (store_ != nullptr) {
+        domain::TagValue pending;
+        pending.value = value;
+        pending.quality = domain::Quality::Uncertain;
+        pending.reason = domain::QualityReason::WritePending;
+        // Avoid feedback loop: publish would enqueue UA update; skip timestamps for now.
+        pending.server_ts = 0;
+        pending.source_ts = 0;
+        store_->publish(id, pending);
+    }
+
+    auto result = write_handler_(id, std::move(value));
+    if (!result) {
+        log_msg(log_, ports::LogLevel::Warn, "UA write enqueue failed: " + result.error().message);
+        if (store_ != nullptr) {
+            domain::TagValue bad;
+            bad.quality = domain::Quality::Bad;
+            bad.reason = domain::QualityReason::WriteRejected;
+            store_->publish(id, bad);
+        }
+    }
+}
+
 void OpcUaServer::pump_loop() {
     while (pump_running_ && server_ != nullptr) {
         flush_updates();
@@ -558,7 +693,9 @@ void OpcUaServer::flush_updates() {
         }
 
         UA_NodeId node = UA_NODEID_NUMERIC(ns_index_, node_it->second);
+        applying_store_update_ = true;
         const auto status = UA_Server_writeDataValue(server_, node, dv);
+        applying_store_update_ = false;
         UA_DataValue_clear(&dv);
         if (status != UA_STATUSCODE_GOOD) {
             log_msg(log_, ports::LogLevel::Warn,

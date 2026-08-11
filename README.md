@@ -26,13 +26,13 @@
 
 ## Возможности
 
-**Сейчас:** проекты карт + `opc-map`, TagStore/Translator/Dispatcher, Modbus TCP, `ServerRuntime`, **OPC UA Read** (open62541, security None).
+**Сейчас:** проекты карт + `opc-map`, TagStore/Translator/Dispatcher, Modbus TCP, `ServerRuntime`, **OPC UA Read/Write/Subscriptions** (open62541, security None).
 
 **Целевые:**
 
 - Опрос Holding/Input/Coils по проектам карт
-- OPC UA Write / Subscriptions для SCADA
-- Write-down, historian, frame debug, метрики
+- Historian, frame debug, метрики
+- Промышленный security (SignAndEncrypt)
 
 OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
 

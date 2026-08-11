@@ -9,6 +9,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Stage 4 OPC UA Write + Subscriptions: UA client write → Dispatcher (`writes_first`),
+  TagStore-driven MonitoredItem notifications, write-queue mutex
+- Stage 4 smoke tests (`tests/test_opc_ua_write_subs.cpp`)
 - Stage 3 OPC UA Read: `OpcUaServer` (open62541), TagStore → UA variables, client smoke tests
 - CLI `--no-opcua`; ServerRuntime wires optional northbound facade
 - FetchContent open62541 (v1.4.11)

@@ -9,8 +9,10 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -20,9 +22,16 @@ struct UA_Server;
 
 namespace opc::adapters {
 
+struct OpcUaWriteNodeContext;
+
 /// OPC UA server (open62541). Security None for lab; TagStore is source of truth for reads.
+/// Writes enqueue into southbound via WriteHandler (Dispatcher). TagStore updates drive
+/// MonitoredItem notifications through UA_Server_writeDataValue.
 class OpcUaServer final : public ports::IOpcUaFacade {
 public:
+    using WriteHandler =
+        std::function<domain::Result<void>(domain::TagId id, domain::ScalarValue value)>;
+
     explicit OpcUaServer(ports::ILog* log = nullptr);
     ~OpcUaServer() override;
 
@@ -38,11 +47,18 @@ public:
     /// Bind all tags from runtime index and subscribe to TagStore updates.
     domain::Result<void> bind_index(const core::RuntimeIndex& index, ports::ITagStore& store);
 
+    /// Southbound write sink (typically Dispatcher::enqueue_write).
+    void set_write_handler(WriteHandler handler);
+
     /// Start background event-loop pump (call after model bind).
     void serve_async();
 
     [[nodiscard]] bool is_running() const { return server_ != nullptr; }
     [[nodiscard]] std::string endpoint_url() const { return endpoint_url_; }
+    [[nodiscard]] std::uint16_t namespace_index() const { return ns_index_; }
+    [[nodiscard]] std::optional<std::uint32_t> node_numeric_id(domain::TagId id) const;
+
+    void handle_client_write(domain::TagId id, project::TagType type, domain::ScalarValue value);
 
 private:
     domain::Result<void> ensure_path(std::string_view node_path, std::uint32_t& out_node_id);
@@ -65,11 +81,16 @@ private:
     std::unordered_map<std::string, std::uint32_t> folder_ids_;
     std::unordered_map<domain::TagId, std::uint32_t> tag_node_ids_;
     std::unordered_map<domain::TagId, project::TagType> tag_types_;
+    std::vector<std::unique_ptr<OpcUaWriteNodeContext>> node_contexts_;
     std::uint64_t store_subscription_{0};
     ports::ITagStore* store_{nullptr};
+    WriteHandler write_handler_;
 
     std::mutex pending_mutex_;
     std::unordered_map<domain::TagId, domain::TagValue> pending_;
+
+    /// Suppress ValueCallback re-entrancy when applying TagStore → UA updates.
+    bool applying_store_update_{false};
 
     std::atomic<bool> pump_running_{false};
     std::thread pump_thread_;

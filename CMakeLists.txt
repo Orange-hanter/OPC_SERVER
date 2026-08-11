@@ -147,6 +147,7 @@ if(BUILD_TESTING)
     tests/test_dispatcher.cpp
     tests/test_server_runtime.cpp
     tests/test_opc_ua_read.cpp
+    tests/test_opc_ua_write_subs.cpp
   )
   target_link_libraries(opc_tests PRIVATE opc::app opc::adapters opc::core opc::project Catch2::Catch2WithMain open62541)
   target_compile_definitions(opc_tests PRIVATE OPC_SERVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
