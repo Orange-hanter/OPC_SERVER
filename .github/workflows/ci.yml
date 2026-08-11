@@ -25,10 +25,13 @@ jobs:
           - os: ubuntu-24.04
             compiler: g++
             cxx: g++
+            cmake_extra: ""
             artifact_name: opc-server-linux-x64
           - os: ubuntu-24.04
             compiler: clang++
             cxx: clang++
+            # Use libstdc++ so std::expected (C++23) is available on Ubuntu runners.
+            cmake_extra: "-DCMAKE_CXX_FLAGS=-stdlib=libstdc++"
             artifact_name: opc-server-linux-x64-clang
 
     steps:

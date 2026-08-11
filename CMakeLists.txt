@@ -30,10 +30,22 @@ else()
   message(WARNING "C++26 with std::expected is not available; building with C++${OPC_CXX_STANDARD}. Target remains C++26.")
 endif()
 
-set(CMAKE_CXX_STANDARD ${OPC_CXX_STANDARD})
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(_OPC_SAVED_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -std=c++23")
+check_cxx_source_compiles("
+#include <expected>
+int main() {
+  std::expected<int, int> value{1};
+  return *value;
+}
+" OPC_HAS_STD_EXPECTED_CXX23)
+set(CMAKE_REQUIRED_FLAGS "${_OPC_SAVED_CMAKE_REQUIRED_FLAGS}")
+
+if(NOT OPC_HAS_STD_EXPECTED_CXX23)
+  message(FATAL_ERROR
+    "std::expected is required (C++23). With Clang, configure with -DCMAKE_CXX_FLAGS=-stdlib=libstdc++ "
+    "and ensure a recent libstdc++ is installed.")
+endif()
 
 add_library(opc_project
   Src/project/load.cpp
