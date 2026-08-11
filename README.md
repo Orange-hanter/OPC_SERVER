@@ -2,7 +2,9 @@
 
 Промышленный шлюз **Modbus → OPC UA → SCADA**: диспетчеризация опроса, отладка, трансляция данных и накопление истории для диспетчерских задач.
 
-> Документация целевой архитектуры: **[DOCs/README.md](DOCs/README.md)**
+> Документация целевой архитектуры: **[DOCs/README.md](DOCs/README.md)**  
+> Стандарты и ADR: **[DOCs/08-engineering-standards.md](DOCs/08-engineering-standards.md)**, **[DOCs/adr/](DOCs/adr/README.md)**  
+> Как контрибьютить: **[CONTRIBUTING.md](CONTRIBUTING.md)**
 
 ## Возможности (целевые)
 

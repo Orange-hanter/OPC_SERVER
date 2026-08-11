@@ -32,16 +32,25 @@ target_include_directories(opc_project
     ${CMAKE_SOURCE_DIR}/Lib/Json
 )
 
+add_library(opc_core
+  Src/core/tag_store.cpp
+  Src/core/translator.cpp
+  Src/core/dispatcher.cpp
+)
+add_library(opc::core ALIAS opc_core)
+target_link_libraries(opc_core PUBLIC opc::project)
+target_include_directories(opc_core PUBLIC ${CMAKE_SOURCE_DIR}/Src)
+
 if(OPC_CXX_STANDARD EQUAL 23)
   target_compile_features(opc_project PUBLIC cxx_std_23)
+  target_compile_features(opc_core PUBLIC cxx_std_23)
 endif()
 
 add_executable(OPC_SERVER
   Src/main.cpp
   Src/app.cpp
 )
-target_link_libraries(OPC_SERVER PRIVATE opc::project)
-target_include_directories(OPC_SERVER PRIVATE ${CMAKE_SOURCE_DIR}/Src ${CMAKE_SOURCE_DIR}/Lib/Json)
+target_link_libraries(OPC_SERVER PRIVATE opc::core opc::project)
 
 add_executable(opc-map
   tools/opc-map/main.cpp
@@ -58,8 +67,10 @@ if(BUILD_TESTING)
 
   add_executable(opc_tests
     tests/test_project.cpp
+    tests/test_tag_store.cpp
+    tests/test_fake_modbus.cpp
   )
-  target_link_libraries(opc_tests PRIVATE opc::project Catch2::Catch2WithMain)
+  target_link_libraries(opc_tests PRIVATE opc::core opc::project Catch2::Catch2WithMain)
   target_compile_definitions(opc_tests PRIVATE OPC_SERVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
   include(Catch)

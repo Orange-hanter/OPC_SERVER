@@ -17,12 +17,20 @@
 - [x] Unit-тесты на примеры из `DOCs/examples/`
 - [ ] Полная проверка через JSON Schema draft 2020-12 engine (сейчас — эквивалентные semantic checks)
 
-### Этап 2 — ModbusPoller + TagStore
+### Этап 1.5 — Архитектурный каркас (обязателен до poller)
 
-- TCP transport (Asio), FC03/04/01/02
-- Цикл групп опроса, таймауты, reconnect
-- Translator (типы, byte order, scale/offset)
-- TagStore с quality и timestamps
+- [x] Engineering standards, quality gates, CONTRIBUTING
+- [x] ADR-0001…0010 (hexagon, concurrency, errors, testing, config, tagstore, transport, observability, UA boundary, scale)
+- [x] Скелет `domain/` / `ports/` / `core/` / `adapters/testsupport`
+- [x] TagStore + FakeModbusTransport + тесты
+- [x] `.clang-format` / `.clang-tidy`
+
+### Этап 2 — ModbusPoller + Translator (по ADR)
+
+- Реализация `Translator::decode/encode` + property-тесты byte order
+- Asio `ModbusTcpTransport` за `IModbusTransport`
+- `Dispatcher::poll_due` на strand per endpoint + Fake component tests
+- TagStore quality/stale в цикле опроса
 - Вывод watchlist в консоль (закрывает пункты из [tasks.md](tasks.md))
 
 ### Этап 3 — OPC UA Read
