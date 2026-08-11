@@ -93,7 +93,7 @@ cmake --preset dev -DOPC_DEPENDENCY_PROVIDER=FETCHCONTENT
 Нужен Conan 2:
 
 ```bash
-python3 -m pip install --user conan
+pipx install conan
 conan profile detect --force
 conan install . -s build_type=Debug -s compiler.cppstd=23 --build=missing
 conan build . -s build_type=Debug -s compiler.cppstd=23 --build=missing

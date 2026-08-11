@@ -73,15 +73,20 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
+<<<<<<< HEAD
           sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
           python3 -m pip install --user conan
+=======
+          sudo apt-get install -y ninja-build cmake g++
+          pipx install conan
+>>>>>>> 25154a8 (Harden Conan setup for Ubuntu CI)
 
       - name: Create Conan profile
-        run: conan profile detect --force
+        run: CC=gcc CXX=g++ conan profile detect --force
 
       - name: Build and test through Conan
         run: |
-          conan build . \
+          CC=gcc CXX=g++ conan build . \
             -s build_type=Debug \
             -s compiler.cppstd=23 \
             --build=missing
