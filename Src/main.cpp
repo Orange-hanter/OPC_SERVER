@@ -1,9 +1,11 @@
-#include "app.h"
+#include "app/application.hpp"
+#include "app/cli_options.hpp"
 
-int main(int argc, char const *argv[])
-{
-    App application;
-    if ( application.init() )
-        application.start();
-    return 0;
+int main(int argc, char const* argv[]) {
+    const auto options = opc::app::parse_cli(argc, argv);
+    opc::app::Application application;
+    if (!application.init(options)) {
+        return options.help ? 0 : 2;
+    }
+    return application.run();
 }

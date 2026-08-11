@@ -51,7 +51,7 @@ flowchart TB
 | Core | `Src/core` | Dispatcher, Translator, TagStore |
 | Project | `Src/project` | Load/validate/migrate карт |
 | Adapters | `Src/adapters` | Asio Modbus, UA, clock, fakes |
-| App | `Src/app` (цель) | Composition root |
+| App | `Src/app` | Composition root (`ServerRuntime`, CLI) |
 | Engineering | `tools/opc-map` | CLI без runtime poller |
 
 Правило зависимостей — [08](08-engineering-standards.md). Нарушение = блокер merge.
