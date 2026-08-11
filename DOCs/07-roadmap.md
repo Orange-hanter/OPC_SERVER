@@ -69,7 +69,7 @@
 | `Src/app.cpp` читает JSON и крутит пустой цикл | App загружает project, стартует poller + UA |
 | `DOCs/config.json` | Вытесняется `*.modbusproj.json` |
 | `Lib/modbuspp` submodule | Замена на Asio-client / libmodbus |
-| CMake без C++23/UA | C++23, FetchContent open62541, тесты |
+| CMake без C++26/UA | C++26, FetchContent open62541, тесты |
 
 ## Вне roadmap ядра
 

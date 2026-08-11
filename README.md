@@ -15,7 +15,7 @@ OPC Classic / DA не входят в ядро; граница описана в
 
 ## Стек (целевой)
 
-- **C++23**, CMake, Ninja
+- **C++26**, CMake, Ninja
 - Asio, open62541, nlohmann/json, spdlog, OpenTelemetry  
   Подробности: [DOCs/05-tech-stack.md](DOCs/05-tech-stack.md)
 
