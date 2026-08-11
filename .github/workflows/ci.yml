@@ -85,3 +85,111 @@ jobs:
             -s build_type=Debug \
             -s compiler.cppstd=23 \
             --build=missing
+
+  studio-quality:
+    name: Studio lint, test & build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend/apps/studio
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/apps/studio/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build web assets
+        run: npm run build
+
+  studio-package:
+    name: Studio package (${{ matrix.target }})
+    needs: [build-test, studio-quality]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            suffix: ""
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            suffix: ".exe"
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            suffix: ""
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ libsqlite3-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Ninja on macOS
+        if: runner.os == 'macOS'
+        run: brew install ninja sqlite
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/apps/studio/package-lock.json
+
+      - name: Build native sidecars
+        shell: bash
+        run: |
+          cmake -S . -B build-studio -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF
+          cmake --build build-studio --target opc-map opc-monitor --parallel
+          mkdir -p frontend/apps/studio/src-tauri/binaries
+          cp "build-studio/tools/opc-map/opc-map${{ matrix.suffix }}" \
+            "frontend/apps/studio/src-tauri/binaries/opc-map-${{ matrix.target }}${{ matrix.suffix }}"
+          cp "build-studio/tools/opc-monitor/opc-monitor${{ matrix.suffix }}" \
+            "frontend/apps/studio/src-tauri/binaries/opc-monitor-${{ matrix.target }}${{ matrix.suffix }}"
+
+      - name: Install frontend dependencies
+        working-directory: frontend/apps/studio
+        run: npm ci
+
+      - name: Build desktop package
+        working-directory: frontend/apps/studio
+        run: npm run tauri build -- --target ${{ matrix.target }}
+
+      - name: Upload desktop package
+        uses: actions/upload-artifact@v4
+        with:
+          name: opc-engineering-studio-${{ matrix.target }}
+          path: frontend/apps/studio/src-tauri/target/${{ matrix.target }}/release/bundle/**
+          if-no-files-found: error
+          retention-days: 14

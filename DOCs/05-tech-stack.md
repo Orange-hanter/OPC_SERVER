@@ -84,6 +84,22 @@ UDP — второй этап того же абстрактного transport-�
 - команды `validate`, `doctor`, `gen-nodeset`, `import-csv`, `migrate-legacy`;
 - позже: TUI (например FTXUI) или лёгкий Web UI для разметки карт — **не** блокер v1.
 
+## Engineering Studio
+
+| Компонент | Выбор |
+|-----------|-------|
+| Desktop shell | **Tauri 2** (Windows, Linux, macOS) |
+| UI | React + TypeScript + Vite + Tailwind CSS |
+| Локальная валидация | JSON Schema/Ajv + bundled `opc-map validate` |
+| Remote monitoring | read-only **OPC UA client** на open62541 |
+| Native IPC | JSON Lines через stdin/stdout процесса `opc-monitor` |
+
+Studio редактирует локальные `*.modbusproj.json` и не изменяет конфигурацию
+runtime напрямую (ADR-0005). Мониторинг использует Browse/Subscriptions и
+диагностические OPC UA узлы; отдельный HTTP/WebSocket API не вводится
+(ADR-0016). Browser-сборка служит только preview с mock-адаптером, поскольку
+браузер не поддерживает `opc.tcp`.
+
 ## Структура каталогов (целевая)
 
 ```text

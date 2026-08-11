@@ -16,8 +16,14 @@
 
 ### Jobs
 
-- **Ubuntu 24.04 + g++** (primary): Release build, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
+- **Ubuntu 24.04 + g++** (primary): CMake preset `ci`, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
+- **Conan 2**: optional dependency provider job (`OPC_DEPENDENCY_PROVIDER=CONAN`).
 - Clang is supported locally with `-DCMAKE_CXX_FLAGS=-stdlib=libstdc++` when libstdc++ provides `std::expected`; not required in CI until runners ship a complete C++23 STL for Clang.
+- **Studio quality**: npm lockfile install, lint, TypeScript check, Vitest and
+  production web-assets build.
+- **Studio package matrix**: native `opc-map`/`opc-monitor` sidecars plus Tauri
+  packages for Windows x64, Linux x64 and macOS arm64. Packages are retained as
+  Actions artifacts for 14 days.
 
 Artifacts from CI are **not** GitHub Releases — they are intermediate build products for debugging/QA.
 
@@ -69,11 +75,16 @@ Manual: Actions → **Release** → Run workflow → enter existing tag.
 opc-server-<ver>-linux-x64/
   bin/OPC_SERVER
   bin/opc-map
+  bin/opc-monitor
   examples/demo-plant.modbusproj.json
   examples/modbus-project.schema.json
   README.md
   CONTRIBUTING.md
 ```
+
+Engineering Studio is produced independently as native Tauri bundles (`msi`/
+`nsis`, `deb`/`AppImage`, `app`/`dmg`). Signing and Apple notarization are
+release gates that require repository secrets; unsigned CI bundles are for QA.
 
 ### Support policy (v0.x)
 
