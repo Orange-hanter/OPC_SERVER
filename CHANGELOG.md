@@ -14,6 +14,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   `--no-historian` / `--frame-log`
 - Modbus frame journal (`IFrameLog`, wired into `ModbusTcpTransport::transact`)
 - `MemoryMetrics` in-process sink; historian replay helper
+- Stage 5 observability (ADR-0015): `SpdlogLog`, `OtelMetrics` (ostream / optional OTLP),
+  CLI `--log-level` / `--log-file` / `--metrics-export` / `--otlp-endpoint`;
+  dispatcher `modbus_poll_rtt_ms` histogram
 - Stage 5 tests (`tests/test_historian.cpp`, `tests/test_frame_log.cpp`)
 - Stage 4.5 hardening (ADR-0013): UA DataSource TagStore reads, write StatusCodes,
   facade `bind_tags`/`set_write_handler`, write-queue bounds, value-preserving quality updates

@@ -66,9 +66,10 @@
 ### Этап 5 — Historian и Debug
 
 - [x] Hot ring buffer (`RingHistorian`), cold SQLite (`SqliteHistorian`) — ADR-0014
-- [x] Frame log Modbus (`IFrameLog` / `FileFrameLog`), `MemoryMetrics` stub (OTel later)
+- [x] Frame log Modbus (`IFrameLog` / `FileFrameLog`)
+- [x] spdlog (`SpdlogLog`) + OpenTelemetry metrics (`OtelMetrics`, ADR-0015)
 - [x] Replay для отладки (`historian_replay.hpp`)
-- [ ] spdlog structured sink / OTel exporter (замена MemoryMetrics)
+- [ ] OTLP default-on in CI / traces for poll-write
 - [ ] Frame-log replay через FakeModbus (PCAP → transport)
 
 ### Этап 6 — Удобство разметки карт

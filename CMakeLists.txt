@@ -62,6 +62,46 @@ file(WRITE ${CMAKE_BINARY_DIR}/generated/app/version.hpp
 #define OPC_SERVER_VERSION_STRING \"${OPC_SERVER_VERSION}\"
 ")
 
+# --- Observability deps (spdlog + OpenTelemetry) ---
+option(OPC_WITH_OTLP "Enable OpenTelemetry OTLP/HTTP metrics exporter" OFF)
+
+set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  spdlog
+  GIT_REPOSITORY https://github.com/gabime/spdlog.git
+  GIT_TAG        v1.15.1
+  GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(spdlog)
+
+set(_OPC_SAVED_BUILD_TESTING "${BUILD_TESTING}")
+set(BUILD_TESTING OFF)
+set(WITH_OTLP_GRPC OFF CACHE BOOL "" FORCE)
+set(WITH_OTLP_HTTP ${OPC_WITH_OTLP} CACHE BOOL "" FORCE)
+set(WITH_OTLP_FILE OFF CACHE BOOL "" FORCE)
+set(WITH_PROMETHEUS OFF CACHE BOOL "" FORCE)
+set(WITH_ZIPKIN OFF CACHE BOOL "" FORCE)
+set(WITH_ELASTICSEARCH OFF CACHE BOOL "" FORCE)
+set(WITH_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(WITH_BENCHMARK OFF CACHE BOOL "" FORCE)
+set(WITH_FUNC_TESTS OFF CACHE BOOL "" FORCE)
+set(WITH_STL ON CACHE BOOL "" FORCE)
+set(WITH_ABSEIL OFF CACHE BOOL "" FORCE)
+set(OPENTELEMETRY_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  opentelemetry-cpp
+  GIT_REPOSITORY https://github.com/open-telemetry/opentelemetry-cpp.git
+  GIT_TAG        v1.20.0
+  GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(opentelemetry-cpp)
+set(BUILD_TESTING "${_OPC_SAVED_BUILD_TESTING}")
+if(BUILD_TESTING)
+  enable_testing()
+endif()
+
 # --- open62541 (OPC UA) ---
 set(UA_ENABLE_AMALGAMATION OFF CACHE BOOL "" FORCE)
 set(UA_ENABLE_ENCRYPTION OFF CACHE BOOL "" FORCE)
@@ -117,10 +157,26 @@ add_library(opc_adapters
   Src/adapters/sqlite_historian.cpp
   Src/adapters/frame_log.cpp
   Src/adapters/memory_metrics.cpp
+  Src/adapters/spdlog_log.cpp
+  Src/adapters/otel_metrics.cpp
 )
 add_library(opc::adapters ALIAS opc_adapters)
 find_package(SQLite3 REQUIRED)
-target_link_libraries(opc_adapters PUBLIC opc::project open62541 SQLite::SQLite3)
+target_link_libraries(opc_adapters
+  PUBLIC
+    opc::project
+    open62541
+    SQLite::SQLite3
+    spdlog::spdlog
+    opentelemetry_metrics
+    opentelemetry_exporter_ostream_metrics
+    opentelemetry_resources
+    opentelemetry_common
+)
+if(OPC_WITH_OTLP)
+  target_compile_definitions(opc_adapters PUBLIC OPC_WITH_OTLP=1)
+  target_link_libraries(opc_adapters PUBLIC opentelemetry_exporter_otlp_http_metric)
+endif()
 target_include_directories(opc_adapters PUBLIC ${CMAKE_SOURCE_DIR}/Src)
 
 add_library(opc_app
@@ -182,6 +238,7 @@ if(BUILD_TESTING)
     tests/test_opc_ua_write_subs.cpp
     tests/test_historian.cpp
     tests/test_frame_log.cpp
+    tests/test_spdlog_otel.cpp
   )
   target_link_libraries(opc_tests PRIVATE opc::app opc::adapters opc::core opc::project Catch2::Catch2WithMain open62541)
   target_include_directories(opc_tests PRIVATE ${CMAKE_BINARY_DIR}/generated)

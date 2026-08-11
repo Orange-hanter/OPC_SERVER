@@ -1,29 +1,69 @@
 #include "app/application.hpp"
 
 #include "adapters/frame_log.hpp"
-#include "adapters/memory_metrics.hpp"
 #include "adapters/opc_ua_server.hpp"
+#include "adapters/otel_metrics.hpp"
 #include "adapters/ring_historian.hpp"
+#include "adapters/spdlog_log.hpp"
 #include "adapters/sqlite_historian.hpp"
-#include "adapters/stderr_log.hpp"
 #include "adapters/system_clock.hpp"
 #include "app/version.hpp"
-#include "ports/i_metrics.hpp"
+#include "ports/i_log.hpp"
 
 #include <chrono>
 #include <iostream>
 #include <thread>
 
 namespace opc::app {
+namespace {
+
+ports::LogLevel to_port_level(LogLevelOption level) {
+    switch (level) {
+    case LogLevelOption::Trace:
+        return ports::LogLevel::Trace;
+    case LogLevelOption::Debug:
+        return ports::LogLevel::Debug;
+    case LogLevelOption::Info:
+        return ports::LogLevel::Info;
+    case LogLevelOption::Warn:
+        return ports::LogLevel::Warn;
+    case LogLevelOption::Error:
+        return ports::LogLevel::Error;
+    }
+    return ports::LogLevel::Info;
+}
+
+adapters::MetricsExportMode to_metrics_mode(MetricsExportOption mode) {
+    switch (mode) {
+    case MetricsExportOption::None:
+        return adapters::MetricsExportMode::None;
+    case MetricsExportOption::OStream:
+        return adapters::MetricsExportMode::OStream;
+    case MetricsExportOption::OtlpHttp:
+        return adapters::MetricsExportMode::OtlpHttp;
+    }
+    return adapters::MetricsExportMode::OStream;
+}
+
+}  // namespace
 
 Application::Application() = default;
-Application::~Application() = default;
+
+Application::~Application() {
+    if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
+        otel->force_flush();
+    }
+}
 
 bool Application::init(const CliOptions& options) {
     options_ = options;
-    log_ = std::make_unique<adapters::StderrLog>();
+
+    adapters::SpdlogLogOptions log_opts;
+    log_opts.min_level = to_port_level(options_.log_level);
+    log_opts.log_file = options_.log_file;
+    log_opts.async = true;
+    log_ = std::make_unique<adapters::SpdlogLog>(std::move(log_opts));
     clock_ = std::make_unique<adapters::SystemClock>();
-    metrics_ = std::make_unique<adapters::MemoryMetrics>();
 
     if (!options_.errors.empty()) {
         for (const auto& err : options_.errors) {
@@ -40,6 +80,23 @@ bool Application::init(const CliOptions& options) {
         std::cout << "OPC_SERVER " << OPC_SERVER_VERSION_STRING << '\n';
         return false;
     }
+
+    if (options_.metrics_export == MetricsExportOption::OtlpHttp &&
+        !adapters::otlp_metrics_supported()) {
+        log_->error("app", "OTLP requested but build lacks OPC_WITH_OTLP");
+        return false;
+    }
+
+    adapters::OtelMetricsOptions metrics_opts;
+    metrics_opts.export_mode = to_metrics_mode(options_.metrics_export);
+    metrics_opts.otlp_endpoint = options_.otlp_endpoint;
+    metrics_opts.service_version = OPC_SERVER_VERSION_STRING;
+    auto otel = std::make_unique<adapters::OtelMetrics>(std::move(metrics_opts));
+    if (!otel->ok()) {
+        log_->error("app", "otel metrics init failed: " + otel->init_error());
+        return false;
+    }
+    metrics_ = std::move(otel);
 
     const auto path = resolve_project_path(options_.project_path);
     if (!path) {
@@ -128,6 +185,9 @@ int Application::run() {
     if (options_.once) {
         poll_and_watch(clock_->now_ms());
         runtime_->stop();
+        if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
+            otel->force_flush();
+        }
         return 0;
     }
 

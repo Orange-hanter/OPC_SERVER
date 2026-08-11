@@ -7,6 +7,9 @@
 
 namespace opc::app {
 
+enum class LogLevelOption { Trace, Debug, Info, Warn, Error };
+enum class MetricsExportOption { None, OStream, OtlpHttp };
+
 struct CliOptions {
     std::string project_path;
     bool once{false};
@@ -17,6 +20,10 @@ struct CliOptions {
     std::size_t historian_capacity{4096};
     std::string historian_db;  // empty = hot ring only
     std::string frame_log_path;  // empty = disabled
+    LogLevelOption log_level{LogLevelOption::Info};
+    std::string log_file;  // empty = stderr only
+    MetricsExportOption metrics_export{MetricsExportOption::OStream};
+    std::string otlp_endpoint;  // used when metrics_export == OtlpHttp
     bool help{false};
     bool version{false};
     std::vector<std::string> errors;
