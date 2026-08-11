@@ -39,7 +39,7 @@ OPC Classic / DA не входят в ядро; граница — [DOCs/01-over
 ## Стек
 
 - **C++26** (fallback C++23), CMake 3.28, Ninja, CMake Presets
-- open62541 (Conan 2 или FetchContent), nlohmann/json; Asio reactor — следующий инкремент  
+- open62541 (Conan 2 или FetchContent), nlohmann/json; Asio reactor — следующий инкремент
   Подробнее: [DOCs/05-tech-stack.md](DOCs/05-tech-stack.md)
 
 ## Документация
