@@ -14,6 +14,10 @@ add_executable(opc_tests
   test_frame_replay.cpp
 )
 
+if(TARGET opc::monitor_client)
+  target_sources(opc_tests PRIVATE test_opc_monitor.cpp)
+endif()
+
 target_link_libraries(opc_tests PRIVATE
   opc::app
   opc::adapters
@@ -22,6 +26,9 @@ target_link_libraries(opc_tests PRIVATE
   Catch2::Catch2WithMain
   "${OPC_OPEN62541_TARGET}"
 )
+if(TARGET opc::monitor_client)
+  target_link_libraries(opc_tests PRIVATE opc::monitor_client)
+endif()
 target_include_directories(opc_tests PRIVATE
   "${CMAKE_BINARY_DIR}/generated"
 )

@@ -63,6 +63,9 @@ private:
                                       std::string_view browse_name,
                                       std::uint32_t parent_id,
                                       const project::Tag& tag);
+    domain::Result<void> add_diagnostics();
+    void note_tag_quality(domain::TagId id, const domain::TagValue& value);
+    void write_diagnostics();
     void pump_loop();
 
     ports::ILog* log_{nullptr};
@@ -77,6 +80,20 @@ private:
     std::vector<std::unique_ptr<OpcUaNodeContext>> node_contexts_;
     ports::ITagStore* store_{nullptr};
     ports::OpcUaWriteHandler write_handler_;
+    std::uint64_t store_subscription_{0};
+
+    std::mutex diagnostics_mutex_;
+    std::unordered_map<domain::TagId, domain::Quality> latest_quality_;
+    std::uint64_t good_count_{0};
+    std::uint64_t uncertain_count_{0};
+    std::uint64_t bad_count_{0};
+    std::string last_error_;
+    bool diagnostics_dirty_{false};
+    std::uint32_t diagnostics_state_node_{0};
+    std::uint32_t diagnostics_good_node_{0};
+    std::uint32_t diagnostics_uncertain_node_{0};
+    std::uint32_t diagnostics_bad_node_{0};
+    std::uint32_t diagnostics_last_error_node_{0};
 
     std::atomic<bool> pump_running_{false};
     std::thread pump_thread_;
