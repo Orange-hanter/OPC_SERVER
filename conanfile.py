@@ -44,7 +44,7 @@ class OpcServerConan(ConanFile):
             }
         )
         cmake.build()
-        cmake.test(cli_args=["--output-on-failure"])
+        cmake.test()
 
     def package(self):
         CMake(self).install()
