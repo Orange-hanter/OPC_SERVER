@@ -15,11 +15,15 @@
 #include <open62541/client_config_default.h>
 #include <open62541/client_highlevel.h>
 
+#include <arpa/inet.h>
 #include <chrono>
 #include <cstring>
 #include <memory>
+#include <netinet/in.h>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
+#include <unistd.h>
 
 #include "core/runtime_index.hpp"
 #include "core/tag_store.hpp"
@@ -36,9 +40,26 @@ using opc::ports::NullMetrics;
 namespace {
 
 std::uint16_t free_tcp_port() {
-    // Prefer a high ephemeral-ish port unique enough for CI; fall back if bind fails in start().
-    static std::uint16_t next = 14840;
-    return next++;
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return static_cast<std::uint16_t>(20000 + (::getpid() % 20000));
+    }
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+        ::close(fd);
+        return static_cast<std::uint16_t>(20000 + (::getpid() % 20000));
+    }
+    socklen_t len = sizeof(addr);
+    if (::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
+        ::close(fd);
+        return static_cast<std::uint16_t>(20000 + (::getpid() % 20000));
+    }
+    const auto port = ntohs(addr.sin_port);
+    ::close(fd);
+    return port;
 }
 
 std::shared_ptr<opc::project::Project> ua_sample_project(std::uint16_t port) {

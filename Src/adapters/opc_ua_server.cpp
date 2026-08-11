@@ -180,6 +180,24 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
     UA_ServerConfig* config = UA_Server_getConfig(server_);
     const auto port = parse_endpoint_port(project_->opcua.endpoint_url, 4840);
     const auto host = parse_endpoint_host(project_->opcua.endpoint_url);
+    // parse_endpoint_host maps wildcards to 127.0.0.1; detect original wildcard separately.
+    const bool wildcard_bind = [&] {
+        constexpr std::string_view kPrefix = "opc.tcp://";
+        std::string_view rest = project_->opcua.endpoint_url;
+        if (rest.starts_with(kPrefix)) {
+            rest.remove_prefix(kPrefix.size());
+        }
+        const auto slash = rest.find('/');
+        if (slash != std::string_view::npos) {
+            rest = rest.substr(0, slash);
+        }
+        const auto colon = rest.rfind(':');
+        if (colon != std::string_view::npos) {
+            rest = rest.substr(0, colon);
+        }
+        return rest.empty() || rest == "0.0.0.0" || rest == "[::]" || rest == "::";
+    }();
+
     auto status = UA_ServerConfig_setMinimal(config, port, nullptr);
     if (status != UA_STATUSCODE_GOOD) {
         UA_Server_delete(server_);
@@ -190,10 +208,31 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
                                              false});
     }
 
-    // Force Discovery/Endpoint URL host so clients connecting via 127.0.0.1
-    // are not rejected when the OS hostname differs (common on CI runners).
-    UA_String_clear(&config->customHostname);
-    config->customHostname = UA_STRING_ALLOC(host.c_str());
+    std::ostringstream advertised;
+    advertised << "opc.tcp://" << host << ':' << port;
+    endpoint_url_ = advertised.str();
+
+    // For an explicit host (including 127.0.0.1 in tests), bind/advertise that URL so
+    // GetEndpoints matches the client dial string. Wildcard URLs keep setMinimal's
+    // "listen on all interfaces" behaviour.
+    if (!wildcard_bind) {
+        if (config->serverUrlsSize > 0) {
+            UA_Array_delete(config->serverUrls, config->serverUrlsSize, &UA_TYPES[UA_TYPES_STRING]);
+            config->serverUrls = nullptr;
+            config->serverUrlsSize = 0;
+        }
+        UA_String* urls =
+            static_cast<UA_String*>(UA_Array_new(1, &UA_TYPES[UA_TYPES_STRING]));
+        if (urls == nullptr) {
+            UA_Server_delete(server_);
+            server_ = nullptr;
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::Internal, "UA_Array_new failed", "adapters.opcua", false});
+        }
+        urls[0] = UA_STRING_ALLOC(endpoint_url_.c_str());
+        config->serverUrls = urls;
+        config->serverUrlsSize = 1;
+    }
 
     const auto& app_name = project_->opcua.application_name.empty() ? project_->name
                                                                     : project_->opcua.application_name;
@@ -221,9 +260,6 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
                                                                : project_->opcua.namespace_uri.c_str();
     ns_index_ = UA_Server_addNamespace(server_, ns_uri);
 
-    std::ostringstream ep;
-    ep << "opc.tcp://" << host << ':' << port;
-    endpoint_url_ = ep.str();
     log_msg(log_, ports::LogLevel::Info, "OPC UA listening on " + endpoint_url_);
     return {};
 }
