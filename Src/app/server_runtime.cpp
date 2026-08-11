@@ -1,12 +1,13 @@
 #include "app/server_runtime.hpp"
 
 #include "adapters/modbus_tcp_transport.hpp"
-#include "adapters/opc_ua_server.hpp"
+#include "ports/i_opc_ua_facade.hpp"
 #include "project/load.hpp"
 
 #include <filesystem>
 #include <type_traits>
 #include <variant>
+#include <vector>
 
 namespace opc::app {
 namespace {
@@ -61,6 +62,7 @@ domain::Result<void> ServerRuntime::start() {
     for (const auto& endpoint : project_->endpoints) {
         auto transport = transport_factory_(endpoint);
         if (!transport) {
+            stop();
             return std::unexpected(domain::Error{domain::ErrorCode::Internal,
                                                  "transport factory returned null for " + endpoint.id,
                                                  "app.runtime",
@@ -79,26 +81,21 @@ domain::Result<void> ServerRuntime::start() {
     }
 
     if (opcua_ != nullptr) {
+        opcua_->set_write_handler([this](domain::TagId id, domain::ScalarValue value) {
+            return dispatcher_->enqueue_write(id, std::move(value));
+        });
         if (auto ua = opcua_->start(project_); !ua) {
+            stop();
             return ua;
         }
-        if (auto* concrete = dynamic_cast<adapters::OpcUaServer*>(opcua_.get())) {
-            concrete->set_write_handler([this](domain::TagId id, domain::ScalarValue value) {
-                return dispatcher_->enqueue_write(id, std::move(value));
-            });
-            if (auto bind = concrete->bind_index(index_, tag_store_); !bind) {
-                return bind;
-            }
-        } else {
-            for (const auto& binding : index_.tags()) {
-                if (binding.tag.node_path.empty()) {
-                    continue;
-                }
-                if (auto bind = opcua_->bind_tag(binding.id, binding.tag.node_path); !bind) {
-                    return bind;
-                }
-            }
-            opcua_->iterate();
+        std::vector<ports::OpcUaTagSpec> specs;
+        specs.reserve(index_.tags().size());
+        for (const auto& binding : index_.tags()) {
+            specs.push_back(ports::OpcUaTagSpec{.id = binding.id, .tag = binding.tag});
+        }
+        if (auto bind = opcua_->bind_tags(tag_store_, specs); !bind) {
+            stop();
+            return bind;
         }
     }
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/runtime_index.hpp"
 #include "domain/types.hpp"
 #include "ports/i_log.hpp"
 #include "ports/i_opc_ua_facade.hpp"
@@ -9,10 +8,10 @@
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -22,16 +21,12 @@ struct UA_Server;
 
 namespace opc::adapters {
 
-struct OpcUaWriteNodeContext;
+struct OpcUaNodeContext;
 
-/// OPC UA server (open62541). Security None for lab; TagStore is source of truth for reads.
-/// Writes enqueue into southbound via WriteHandler (Dispatcher). TagStore updates drive
-/// MonitoredItem notifications through UA_Server_writeDataValue.
+/// OPC UA server (open62541). Security None for lab.
+/// Reads come from ITagStore via DataSource; writes enqueue via OpcUaWriteHandler.
 class OpcUaServer final : public ports::IOpcUaFacade {
 public:
-    using WriteHandler =
-        std::function<domain::Result<void>(domain::TagId id, domain::ScalarValue value)>;
-
     explicit OpcUaServer(ports::ILog* log = nullptr);
     ~OpcUaServer() override;
 
@@ -42,15 +37,11 @@ public:
     void stop() override;
 
     domain::Result<void> bind_tag(domain::TagId id, std::string_view node_path) override;
+    domain::Result<void> bind_tags(ports::ITagStore& store,
+                                   std::span<const ports::OpcUaTagSpec> tags) override;
+    void set_write_handler(ports::OpcUaWriteHandler handler) override;
     void iterate() override;
 
-    /// Bind all tags from runtime index and subscribe to TagStore updates.
-    domain::Result<void> bind_index(const core::RuntimeIndex& index, ports::ITagStore& store);
-
-    /// Southbound write sink (typically Dispatcher::enqueue_write).
-    void set_write_handler(WriteHandler handler);
-
-    /// Start background event-loop pump (call after model bind).
     void serve_async();
 
     [[nodiscard]] bool is_running() const { return server_ != nullptr; }
@@ -58,7 +49,13 @@ public:
     [[nodiscard]] std::uint16_t namespace_index() const { return ns_index_; }
     [[nodiscard]] std::optional<std::uint32_t> node_numeric_id(domain::TagId id) const;
 
-    void handle_client_write(domain::TagId id, project::TagType type, domain::ScalarValue value);
+    [[nodiscard]] ports::ITagStore* store() const { return store_; }
+    [[nodiscard]] ports::OpcUaWriteHandler& write_handler() { return write_handler_; }
+    [[nodiscard]] ports::ILog* log() const { return log_; }
+
+    [[nodiscard]] static std::uint32_t quality_to_status(domain::Quality quality,
+                                                        domain::QualityReason reason);
+    [[nodiscard]] static std::uint32_t map_error_to_status(const domain::Error& error);
 
 private:
     domain::Result<void> ensure_path(std::string_view node_path, std::uint32_t& out_node_id);
@@ -66,11 +63,7 @@ private:
                                       std::string_view browse_name,
                                       std::uint32_t parent_id,
                                       const project::Tag& tag);
-    void enqueue_update(domain::TagId id, const domain::TagValue& value);
-    void flush_updates();
     void pump_loop();
-    [[nodiscard]] static std::uint32_t quality_to_status(domain::Quality quality,
-                                                         domain::QualityReason reason);
 
     ports::ILog* log_{nullptr};
     UA_Server* server_{nullptr};
@@ -81,16 +74,9 @@ private:
     std::unordered_map<std::string, std::uint32_t> folder_ids_;
     std::unordered_map<domain::TagId, std::uint32_t> tag_node_ids_;
     std::unordered_map<domain::TagId, project::TagType> tag_types_;
-    std::vector<std::unique_ptr<OpcUaWriteNodeContext>> node_contexts_;
-    std::uint64_t store_subscription_{0};
+    std::vector<std::unique_ptr<OpcUaNodeContext>> node_contexts_;
     ports::ITagStore* store_{nullptr};
-    WriteHandler write_handler_;
-
-    std::mutex pending_mutex_;
-    std::unordered_map<domain::TagId, domain::TagValue> pending_;
-
-    /// Suppress ValueCallback re-entrancy when applying TagStore → UA updates.
-    bool applying_store_update_{false};
+    ports::OpcUaWriteHandler write_handler_;
 
     std::atomic<bool> pump_running_{false};
     std::thread pump_thread_;

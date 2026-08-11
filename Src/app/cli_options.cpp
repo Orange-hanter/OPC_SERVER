@@ -10,13 +10,15 @@ void print_usage(std::ostream& out) {
         << "Usage:\n"
         << "  OPC_SERVER [--project <file.modbusproj.json>] [--once] [--watch] [--period-ms N]\n"
         << "             [--no-opcua]\n"
+        << "  OPC_SERVER --version\n"
         << "  OPC_SERVER --help\n\n"
         << "Options:\n"
         << "  --project <path>   Path to Modbus project map (default: search common paths)\n"
         << "  --once             Run one poll cycle across endpoints and exit\n"
         << "  --watch            Print tag watchlist after each poll\n"
         << "  --period-ms <n>    Loop sleep between polls (default 1000)\n"
-        << "  --no-opcua         Disable OPC UA northbound server\n";
+        << "  --no-opcua         Disable OPC UA northbound server\n"
+        << "  --version          Print version and exit\n";
 }
 
 CliOptions parse_cli(int argc, char const* argv[]) {
@@ -25,6 +27,10 @@ CliOptions parse_cli(int argc, char const* argv[]) {
         const std::string_view arg = argv[i];
         if (arg == "--help" || arg == "-h") {
             opts.help = true;
+            continue;
+        }
+        if (arg == "--version" || arg == "-V") {
+            opts.version = true;
             continue;
         }
         if (arg == "--once") {

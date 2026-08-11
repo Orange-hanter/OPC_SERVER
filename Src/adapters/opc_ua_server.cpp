@@ -1,15 +1,18 @@
 #include "adapters/opc_ua_server.hpp"
 
+#include "domain/tag_value_util.hpp"
+
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
 
 #include <charconv>
+#include <chrono>
 #include <sstream>
 #include <variant>
 
 namespace opc::adapters {
 
-struct OpcUaWriteNodeContext {
+struct OpcUaNodeContext {
     OpcUaServer* self{nullptr};
     domain::TagId tag_id{0};
     project::TagType type{project::TagType::UInt16};
@@ -22,6 +25,11 @@ void log_msg(ports::ILog* log, ports::LogLevel level, std::string_view msg) {
     if (log != nullptr) {
         log->log(level, "adapters.opcua", msg);
     }
+}
+
+[[nodiscard]] domain::TimestampMs wall_now_ms() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
 [[nodiscard]] std::uint16_t parse_endpoint_port(std::string_view url, std::uint16_t fallback) {
@@ -200,25 +208,94 @@ void log_msg(ports::ILog* log, ports::LogLevel level, std::string_view msg) {
     return std::nullopt;
 }
 
-void on_client_write(UA_Server* /*server*/,
-                     const UA_NodeId* /*session_id*/,
-                     void* /*session_context*/,
-                     const UA_NodeId* /*node_id*/,
-                     void* node_context,
-                     const UA_NumericRange* /*range*/,
-                     const UA_DataValue* data) {
-    auto* ctx = static_cast<OpcUaWriteNodeContext*>(node_context);
+UA_StatusCode data_source_read(UA_Server* /*server*/,
+                               const UA_NodeId* /*session_id*/,
+                               void* /*session_context*/,
+                               const UA_NodeId* /*node_id*/,
+                               void* node_context,
+                               UA_Boolean include_source_timestamp,
+                               const UA_NumericRange* /*range*/,
+                               UA_DataValue* value) {
+    auto* ctx = static_cast<OpcUaNodeContext*>(node_context);
+    if (ctx == nullptr || ctx->self == nullptr || value == nullptr) {
+        return UA_STATUSCODE_BADINTERNALERROR;
+    }
+
+    UA_DataValue_init(value);
+    value->hasStatus = true;
+
+    ports::ITagStore* store = ctx->self->store();
+    if (store == nullptr) {
+        value->status = UA_STATUSCODE_BADNOCOMMUNICATION;
+        return UA_STATUSCODE_GOOD;
+    }
+
+    const auto tv = store->get(ctx->tag_id);
+    if (!tv) {
+        value->status = UA_STATUSCODE_BADNOCOMMUNICATION;
+        return UA_STATUSCODE_GOOD;
+    }
+
+    value->status = static_cast<UA_StatusCode>(
+        OpcUaServer::quality_to_status(tv->quality, tv->reason));
+
+    if (!std::holds_alternative<std::monostate>(tv->value)) {
+        if (fill_variant(value->value, ctx->type, tv->value)) {
+            value->hasValue = true;
+        }
+    }
+
+    if (include_source_timestamp && tv->source_ts > 0) {
+        value->hasSourceTimestamp = true;
+        value->sourceTimestamp = ms_to_ua_datetime(tv->source_ts);
+    }
+    if (tv->server_ts > 0) {
+        value->hasServerTimestamp = true;
+        value->serverTimestamp = ms_to_ua_datetime(tv->server_ts);
+    }
+    return UA_STATUSCODE_GOOD;
+}
+
+UA_StatusCode data_source_write(UA_Server* /*server*/,
+                                const UA_NodeId* /*session_id*/,
+                                void* /*session_context*/,
+                                const UA_NodeId* /*node_id*/,
+                                void* node_context,
+                                const UA_NumericRange* /*range*/,
+                                const UA_DataValue* data) {
+    auto* ctx = static_cast<OpcUaNodeContext*>(node_context);
     if (ctx == nullptr || ctx->self == nullptr || data == nullptr || !data->hasValue) {
-        return;
+        return UA_STATUSCODE_BADINTERNALERROR;
     }
     if (!ctx->writable) {
-        return;
+        return UA_STATUSCODE_BADNOTWRITABLE;
     }
+
     auto scalar = variant_to_scalar(ctx->type, data->value);
     if (!scalar) {
-        return;
+        return UA_STATUSCODE_BADTYPEMISMATCH;
     }
-    ctx->self->handle_client_write(ctx->tag_id, ctx->type, std::move(*scalar));
+
+    auto& handler = ctx->self->write_handler();
+    if (!handler) {
+        return UA_STATUSCODE_BADINTERNALERROR;
+    }
+
+    auto result = handler(ctx->tag_id, std::move(*scalar));
+    if (!result) {
+        log_msg(ctx->self->log(), ports::LogLevel::Warn,
+                "UA write enqueue failed: " + result.error().message);
+        return static_cast<UA_StatusCode>(OpcUaServer::map_error_to_status(result.error()));
+    }
+
+    if (ports::ITagStore* store = ctx->self->store(); store != nullptr) {
+        store->publish(ctx->tag_id,
+                       domain::with_quality(store->get(ctx->tag_id),
+                                            domain::Quality::Uncertain,
+                                            domain::QualityReason::WritePending,
+                                            wall_now_ms()));
+    }
+    return UA_STATUSCODE_GOOD;
 }
 
 }  // namespace
@@ -343,11 +420,7 @@ void OpcUaServer::stop() {
     if (pump_thread_.joinable()) {
         pump_thread_.join();
     }
-    if (store_ != nullptr && store_subscription_ != 0) {
-        store_->unsubscribe(store_subscription_);
-        store_subscription_ = 0;
-        store_ = nullptr;
-    }
+    store_ = nullptr;
     if (server_ == nullptr) {
         return;
     }
@@ -358,10 +431,6 @@ void OpcUaServer::stop() {
     tag_node_ids_.clear();
     tag_types_.clear();
     node_contexts_.clear();
-    {
-        std::lock_guard lock(pending_mutex_);
-        pending_.clear();
-    }
     log_msg(log_, ports::LogLevel::Info, "OPC UA stopped");
 }
 
@@ -469,17 +538,24 @@ domain::Result<void> OpcUaServer::add_variable(domain::TagId tag_id,
             domain::Error{domain::ErrorCode::Internal, msg.str(), "adapters.opcua", false});
     }
 
-    auto ctx = std::make_unique<OpcUaWriteNodeContext>();
+    auto ctx = std::make_unique<OpcUaNodeContext>();
     ctx->self = this;
     ctx->tag_id = tag_id;
     ctx->type = tag.type;
     ctx->writable = tag.writable;
     UA_Server_setNodeContext(server_, out_id, ctx.get());
 
-    UA_ValueCallback callback;
-    callback.onRead = nullptr;
-    callback.onWrite = on_client_write;
-    UA_Server_setVariableNode_valueCallback(server_, out_id, callback);
+    UA_DataSource data_source;
+    data_source.read = data_source_read;
+    data_source.write = data_source_write;
+    const auto ds_status = UA_Server_setVariableNode_dataSource(server_, out_id, data_source);
+    if (ds_status != UA_STATUSCODE_GOOD) {
+        UA_NodeId_clear(&out_id);
+        return std::unexpected(domain::Error{domain::ErrorCode::Internal,
+                                             "failed to set DataSource for " + browse_owned,
+                                             "adapters.opcua",
+                                             false});
+    }
 
     tag_node_ids_.emplace(tag_id, out_id.identifier.numeric);
     tag_types_.emplace(tag_id, tag.type);
@@ -525,41 +601,35 @@ domain::Result<void> OpcUaServer::bind_tag(domain::TagId id, std::string_view no
     return add_variable(id, parts.back(), parent_id, *found);
 }
 
-domain::Result<void> OpcUaServer::bind_index(const core::RuntimeIndex& index, ports::ITagStore& store) {
+domain::Result<void> OpcUaServer::bind_tags(ports::ITagStore& store,
+                                            std::span<const ports::OpcUaTagSpec> tags) {
     if (server_ == nullptr) {
         return std::unexpected(domain::Error{
             domain::ErrorCode::Internal, "OPC UA server not started", "adapters.opcua", false});
     }
 
-    for (const auto& binding : index.tags()) {
-        if (binding.tag.node_path.empty()) {
-            log_msg(log_, ports::LogLevel::Warn,
-                    "skip tag without nodePath: " + binding.tag.name);
+    store_ = &store;
+    for (const auto& spec : tags) {
+        if (spec.tag.node_path.empty()) {
+            log_msg(log_, ports::LogLevel::Warn, "skip tag without nodePath: " + spec.tag.name);
             continue;
         }
         std::uint32_t parent_id = 0;
-        if (auto r = ensure_path(binding.tag.node_path, parent_id); !r) {
+        if (auto r = ensure_path(spec.tag.node_path, parent_id); !r) {
             return r;
         }
-        const auto parts = split_path(binding.tag.node_path);
-        if (auto r = add_variable(binding.id, parts.back(), parent_id, binding.tag); !r) {
+        const auto parts = split_path(spec.tag.node_path);
+        if (auto r = add_variable(spec.id, parts.back(), parent_id, spec.tag); !r) {
             return r;
-        }
-        if (auto existing = store.get(binding.id)) {
-            enqueue_update(binding.id, *existing);
         }
     }
 
-    if (store_subscription_ != 0 && store_ != nullptr) {
-        store_->unsubscribe(store_subscription_);
-        store_subscription_ = 0;
-    }
-    store_ = &store;
-    store_subscription_ = store.subscribe([this](domain::TagId id, const domain::TagValue& value) {
-        enqueue_update(id, value);
-    });
     serve_async();
     return {};
+}
+
+void OpcUaServer::set_write_handler(ports::OpcUaWriteHandler handler) {
+    write_handler_ = std::move(handler);
 }
 
 void OpcUaServer::serve_async() {
@@ -571,10 +641,6 @@ void OpcUaServer::serve_async() {
     log_msg(log_, ports::LogLevel::Info, "OPC UA event loop thread started");
 }
 
-void OpcUaServer::set_write_handler(WriteHandler handler) {
-    write_handler_ = std::move(handler);
-}
-
 std::optional<std::uint32_t> OpcUaServer::node_numeric_id(domain::TagId id) const {
     const auto it = tag_node_ids_.find(id);
     if (it == tag_node_ids_.end()) {
@@ -583,50 +649,19 @@ std::optional<std::uint32_t> OpcUaServer::node_numeric_id(domain::TagId id) cons
     return it->second;
 }
 
-void OpcUaServer::handle_client_write(domain::TagId id,
-                                      project::TagType /*type*/,
-                                      domain::ScalarValue value) {
-    if (applying_store_update_) {
-        return;
-    }
-    if (!write_handler_) {
-        log_msg(log_, ports::LogLevel::Warn, "UA write ignored: no write handler");
-        return;
-    }
-
-    if (store_ != nullptr) {
-        domain::TagValue pending;
-        pending.value = value;
-        pending.quality = domain::Quality::Uncertain;
-        pending.reason = domain::QualityReason::WritePending;
-        // Avoid feedback loop: publish would enqueue UA update; skip timestamps for now.
-        pending.server_ts = 0;
-        pending.source_ts = 0;
-        store_->publish(id, pending);
-    }
-
-    auto result = write_handler_(id, std::move(value));
-    if (!result) {
-        log_msg(log_, ports::LogLevel::Warn, "UA write enqueue failed: " + result.error().message);
-        if (store_ != nullptr) {
-            domain::TagValue bad;
-            bad.quality = domain::Quality::Bad;
-            bad.reason = domain::QualityReason::WriteRejected;
-            store_->publish(id, bad);
-        }
-    }
-}
-
 void OpcUaServer::pump_loop() {
     while (pump_running_ && server_ != nullptr) {
-        flush_updates();
         UA_Server_run_iterate(server_, true);
     }
 }
 
-void OpcUaServer::enqueue_update(domain::TagId id, const domain::TagValue& value) {
-    std::lock_guard lock(pending_mutex_);
-    pending_[id] = value;
+void OpcUaServer::iterate() {
+    if (pump_thread_.joinable()) {
+        return;
+    }
+    if (server_ != nullptr) {
+        UA_Server_run_iterate(server_, true);
+    }
 }
 
 std::uint32_t OpcUaServer::quality_to_status(domain::Quality quality, domain::QualityReason reason) {
@@ -656,62 +691,19 @@ std::uint32_t OpcUaServer::quality_to_status(domain::Quality quality, domain::Qu
     return UA_STATUSCODE_BADINTERNALERROR;
 }
 
-void OpcUaServer::flush_updates() {
-    if (server_ == nullptr) {
-        return;
-    }
-    std::unordered_map<domain::TagId, domain::TagValue> batch;
-    {
-        std::lock_guard lock(pending_mutex_);
-        batch.swap(pending_);
-    }
-    for (const auto& [id, value] : batch) {
-        const auto node_it = tag_node_ids_.find(id);
-        const auto type_it = tag_types_.find(id);
-        if (node_it == tag_node_ids_.end() || type_it == tag_types_.end()) {
-            continue;
+std::uint32_t OpcUaServer::map_error_to_status(const domain::Error& error) {
+    switch (error.code) {
+    case domain::ErrorCode::Permission:
+        if (error.message.find("writable") != std::string::npos) {
+            return UA_STATUSCODE_BADNOTWRITABLE;
         }
-
-        UA_DataValue dv;
-        UA_DataValue_init(&dv);
-        dv.hasStatus = true;
-        dv.status = static_cast<UA_StatusCode>(quality_to_status(value.quality, value.reason));
-
-        if (!std::holds_alternative<std::monostate>(value.value)) {
-            if (fill_variant(dv.value, type_it->second, value.value)) {
-                dv.hasValue = true;
-            }
-        }
-
-        if (value.source_ts > 0) {
-            dv.hasSourceTimestamp = true;
-            dv.sourceTimestamp = ms_to_ua_datetime(value.source_ts);
-        }
-        if (value.server_ts > 0) {
-            dv.hasServerTimestamp = true;
-            dv.serverTimestamp = ms_to_ua_datetime(value.server_ts);
-        }
-
-        UA_NodeId node = UA_NODEID_NUMERIC(ns_index_, node_it->second);
-        applying_store_update_ = true;
-        const auto status = UA_Server_writeDataValue(server_, node, dv);
-        applying_store_update_ = false;
-        UA_DataValue_clear(&dv);
-        if (status != UA_STATUSCODE_GOOD) {
-            log_msg(log_, ports::LogLevel::Warn,
-                    "writeDataValue failed for tag " + std::to_string(id));
-        }
-    }
-}
-
-void OpcUaServer::iterate() {
-    // When the background pump owns the UA thread, only nudge pending flush via queue.
-    if (pump_thread_.joinable()) {
-        return;
-    }
-    flush_updates();
-    if (server_ != nullptr) {
-        UA_Server_run_iterate(server_, true);
+        return UA_STATUSCODE_BADUSERACCESSDENIED;
+    case domain::ErrorCode::QueueFull:
+        return UA_STATUSCODE_BADRESOURCEUNAVAILABLE;
+    case domain::ErrorCode::InvalidArgument:
+        return UA_STATUSCODE_BADTYPEMISMATCH;
+    default:
+        return UA_STATUSCODE_BADINTERNALERROR;
     }
 }
 

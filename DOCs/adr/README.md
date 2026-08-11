@@ -17,5 +17,6 @@ ADR фиксируют **существенные** решения: контек
 | [0010](0010-scalability-model.md) | Модель масштабирования | Accepted |
 | [0011](0011-server-runtime.md) | ServerRuntime composition root | Accepted |
 | [0012](0012-ci-releases.md) | CI artifacts and SemVer releases | Accepted |
+| [0013](0013-post-mvp-hardening.md) | Hardening after Stage 1–4 review | Accepted |
 
 Новый ADR: скопировать структуру (Context / Decision / Alternatives / Consequences), следующий номер, ссылка в этой таблице и в [08-engineering-standards](../08-engineering-standards.md) при необходимости.

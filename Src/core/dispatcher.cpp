@@ -1,7 +1,9 @@
 #include "core/dispatcher.hpp"
 #include "core/translator.hpp"
+#include "domain/tag_value_util.hpp"
 
 #include <iterator>
+#include <optional>
 #include <vector>
 
 namespace opc::core {
@@ -33,6 +35,24 @@ domain::Error transport_error(domain::Error err) {
     return err;
 }
 
+void publish_quality(ports::ITagStore* store,
+                     domain::TagId id,
+                     domain::Quality quality,
+                     domain::QualityReason reason,
+                     domain::TimestampMs now,
+                     std::optional<domain::ScalarValue> value = std::nullopt) {
+    if (store == nullptr) {
+        return;
+    }
+    auto previous = store->get(id);
+    auto next = domain::with_quality(previous, quality, reason, now);
+    if (value.has_value()) {
+        next.value = *value;
+        next.source_ts = now;
+    }
+    store->publish(id, next);
+}
+
 }  // namespace
 
 Dispatcher::Dispatcher(Dependencies deps) : deps_(std::move(deps)) {}
@@ -61,11 +81,8 @@ domain::Result<void> Dispatcher::poll_tag(const TagBinding& binding,
     } else if (tag.area == project::Area::Coil) {
         auto coils = transport.read_coils(binding.unit_id, addr, qty);
         if (!coils) {
-            domain::TagValue bad;
-            bad.quality = domain::Quality::Bad;
-            bad.reason = domain::QualityReason::NoCommunication;
-            bad.server_ts = now;
-            deps_.tag_store->publish(binding.id, bad);
+            publish_quality(deps_.tag_store, binding.id, domain::Quality::Bad,
+                            domain::QualityReason::NoCommunication, now);
             if (deps_.metrics != nullptr) {
                 deps_.metrics->counter_add("modbus_poll_errors_total");
             }
@@ -80,11 +97,8 @@ domain::Result<void> Dispatcher::poll_tag(const TagBinding& binding,
     } else {
         auto discs = transport.read_discrete_inputs(binding.unit_id, addr, qty);
         if (!discs) {
-            domain::TagValue bad;
-            bad.quality = domain::Quality::Bad;
-            bad.reason = domain::QualityReason::NoCommunication;
-            bad.server_ts = now;
-            deps_.tag_store->publish(binding.id, bad);
+            publish_quality(deps_.tag_store, binding.id, domain::Quality::Bad,
+                            domain::QualityReason::NoCommunication, now);
             return std::unexpected(transport_error(discs.error()));
         }
         std::vector<std::uint16_t> as_regs;
@@ -95,14 +109,12 @@ domain::Result<void> Dispatcher::poll_tag(const TagBinding& binding,
     }
 
     if (!regs) {
-        domain::TagValue bad;
-        bad.quality = domain::Quality::Bad;
-        bad.reason = regs.error().code == domain::ErrorCode::Timeout ? domain::QualityReason::Timeout
-                     : regs.error().code == domain::ErrorCode::ModbusException
-                         ? domain::QualityReason::ModbusException
-                         : domain::QualityReason::NoCommunication;
-        bad.server_ts = now;
-        deps_.tag_store->publish(binding.id, bad);
+        const auto reason = regs.error().code == domain::ErrorCode::Timeout
+                                ? domain::QualityReason::Timeout
+                            : regs.error().code == domain::ErrorCode::ModbusException
+                                ? domain::QualityReason::ModbusException
+                                : domain::QualityReason::NoCommunication;
+        publish_quality(deps_.tag_store, binding.id, domain::Quality::Bad, reason, now);
         if (deps_.metrics != nullptr) {
             deps_.metrics->counter_add("modbus_poll_errors_total");
         }
@@ -110,18 +122,17 @@ domain::Result<void> Dispatcher::poll_tag(const TagBinding& binding,
     }
 
     auto decoded = Translator::decode(tag, *regs);
-    domain::TagValue value;
-    value.server_ts = now;
-    value.source_ts = now;
     if (!decoded) {
-        value.quality = domain::Quality::Bad;
-        value.reason = domain::QualityReason::DecodingError;
-        deps_.tag_store->publish(binding.id, value);
+        publish_quality(deps_.tag_store, binding.id, domain::Quality::Bad,
+                        domain::QualityReason::DecodingError, now);
         return std::unexpected(decoded.error());
     }
+    domain::TagValue value;
     value.value = *decoded;
     value.quality = domain::Quality::Good;
     value.reason = domain::QualityReason::None;
+    value.server_ts = now;
+    value.source_ts = now;
     deps_.tag_store->publish(binding.id, value);
     return {};
 }
@@ -135,7 +146,6 @@ domain::Result<void> Dispatcher::poll_group(const project::PollGroup& group,
             domain::ErrorCode::NotFound, "device missing", "core.dispatcher", false});
     }
 
-    // Prefer explicit tagNames; otherwise poll all device tags in this group id.
     std::vector<TagBinding> to_poll;
     if (!group.tag_names.empty()) {
         for (const auto& name : group.tag_names) {
@@ -155,7 +165,6 @@ domain::Result<void> Dispatcher::poll_group(const project::PollGroup& group,
                 to_poll.push_back(binding);
             }
         }
-        // If blocks exist but tags have no group match, fall back to tags overlapping blocks.
         if (to_poll.empty() && !group.blocks.empty()) {
             for (const auto& binding : deps_.index.tags()) {
                 if (binding.device_id != group.device_id) {
@@ -203,11 +212,11 @@ domain::Result<void> Dispatcher::poll_due(std::string_view endpoint_id, domain::
         }
     }
 
-    // writes_first
     if (auto wr = flush_writes(endpoint_id); !wr) {
         return wr;
     }
 
+    domain::Result<void> first_error = {};
     const auto groups = deps_.index.groups_for_endpoint(endpoint_id);
     for (const auto* group : groups) {
         const std::string key = std::string(endpoint_id) + "|" + group->id;
@@ -221,10 +230,12 @@ domain::Result<void> Dispatcher::poll_due(std::string_view endpoint_id, domain::
             if (deps_.metrics != nullptr) {
                 deps_.metrics->counter_add("modbus_poll_overruns");
             }
-            // Continue other groups; return last error after loop? Keep going for isolation.
+            if (first_error.has_value()) {
+                first_error = std::unexpected(r.error());
+            }
         }
     }
-    return {};
+    return first_error;
 }
 
 domain::Result<void> Dispatcher::enqueue_write(domain::TagId tag_id, domain::ScalarValue value) {
@@ -239,11 +250,19 @@ domain::Result<void> Dispatcher::enqueue_write(domain::TagId tag_id, domain::Sca
     }
     {
         std::lock_guard lock(write_mutex_);
-        write_queues_[binding->endpoint_id].push_back(PendingWrite{tag_id, std::move(value)});
+        auto& queue = write_queues_[binding->endpoint_id];
+        if (queue.size() >= kMaxWriteQueueDepth) {
+            if (deps_.metrics != nullptr) {
+                deps_.metrics->counter_add("modbus_write_queue_overflow_total");
+            }
+            return std::unexpected(domain::Error{domain::ErrorCode::QueueFull,
+                                                 "write queue full for endpoint " + binding->endpoint_id,
+                                                 "core.dispatcher",
+                                                 true});
+        }
+        queue.push_back(PendingWrite{tag_id, std::move(value)});
         if (deps_.metrics != nullptr) {
-            deps_.metrics->gauge_set(
-                "modbus_write_queue_depth",
-                static_cast<double>(write_queues_[binding->endpoint_id].size()));
+            deps_.metrics->gauge_set("modbus_write_queue_depth", static_cast<double>(queue.size()));
         }
     }
     return {};
@@ -261,7 +280,6 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
     }
     auto t_it = transports_.find(std::string(endpoint_id));
     if (t_it == transports_.end() || t_it->second == nullptr) {
-        // Put writes back so they are not lost.
         std::lock_guard lock(write_mutex_);
         auto& queue = write_queues_[std::string(endpoint_id)];
         queue.insert(queue.begin(), std::make_move_iterator(batch.begin()),
@@ -272,20 +290,20 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
     auto& transport = *t_it->second;
     const auto now = deps_.clock != nullptr ? deps_.clock->now_ms() : domain::TimestampMs{0};
 
-    for (auto& pending : batch) {
+    for (std::size_t i = 0; i < batch.size(); ++i) {
+        auto& pending = batch[i];
         auto binding = deps_.index.find_by_id(pending.tag_id);
         if (!binding) {
             continue;
         }
         auto encoded = Translator::encode(binding->tag, pending.value);
         if (!encoded) {
-            domain::TagValue bad;
-            bad.quality = domain::Quality::Bad;
-            bad.reason = domain::QualityReason::DecodingError;
-            bad.server_ts = now;
-            if (deps_.tag_store) {
-                deps_.tag_store->publish(pending.tag_id, bad);
-            }
+            publish_quality(deps_.tag_store, pending.tag_id, domain::Quality::Bad,
+                            domain::QualityReason::DecodingError, now);
+            std::lock_guard lock(write_mutex_);
+            auto& queue = write_queues_[std::string(endpoint_id)];
+            queue.insert(queue.begin(), std::make_move_iterator(batch.begin() + static_cast<std::ptrdiff_t>(i + 1)),
+                         std::make_move_iterator(batch.end()));
             return std::unexpected(encoded.error());
         }
 
@@ -299,23 +317,17 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
             wr = transport.write_multiple_registers(binding->unit_id, addr, *encoded);
         }
 
-        domain::TagValue value;
-        value.server_ts = now;
-        value.source_ts = now;
         if (!wr) {
-            value.quality = domain::Quality::Bad;
-            value.reason = domain::QualityReason::WriteRejected;
-            if (deps_.tag_store) {
-                deps_.tag_store->publish(pending.tag_id, value);
-            }
+            publish_quality(deps_.tag_store, pending.tag_id, domain::Quality::Bad,
+                            domain::QualityReason::WriteRejected, now);
+            std::lock_guard lock(write_mutex_);
+            auto& queue = write_queues_[std::string(endpoint_id)];
+            queue.insert(queue.begin(), std::make_move_iterator(batch.begin() + static_cast<std::ptrdiff_t>(i + 1)),
+                         std::make_move_iterator(batch.end()));
             return std::unexpected(wr.error());
         }
-        value.value = pending.value;
-        value.quality = domain::Quality::Good;
-        value.reason = domain::QualityReason::None;
-        if (deps_.tag_store) {
-            deps_.tag_store->publish(pending.tag_id, value);
-        }
+        publish_quality(deps_.tag_store, pending.tag_id, domain::Quality::Good,
+                        domain::QualityReason::None, now, pending.value);
     }
     return {};
 }

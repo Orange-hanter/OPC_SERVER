@@ -60,6 +60,8 @@ private:
         domain::TagId tag_id{0};
         domain::ScalarValue value{};
     };
+    static constexpr std::size_t kMaxWriteQueueDepth = 1024;
+
     std::mutex write_mutex_;
     std::unordered_map<std::string, std::vector<PendingWrite>> write_queues_;
 };

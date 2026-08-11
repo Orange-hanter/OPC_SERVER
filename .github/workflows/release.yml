@@ -69,12 +69,11 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           NAME="opc-server-${VERSION}-linux-x64"
-          cmake --install build --prefix stage
+          cmake --install build --prefix stage --component opc-server
           mkdir -p "dist/${NAME}/bin" "dist/${NAME}/examples" "dist/${NAME}/docs"
           cp -a stage/bin/* "dist/${NAME}/bin/"
           cp README.md CONTRIBUTING.md "dist/${NAME}/"
-          cp DOCs/examples/demo-plant.modbusproj.json "dist/${NAME}/examples/"
-          cp DOCs/schemas/modbus-project.schema.json "dist/${NAME}/examples/"
+          cp -a stage/share/opc-server/examples/* "dist/${NAME}/examples/"
           cp DOCs/11-ci-and-releases.md "dist/${NAME}/docs/" 2>/dev/null || true
           if [ -f LICENSE ]; then cp LICENSE "dist/${NAME}/"; fi
           (cd dist && tar -czf "${NAME}.tar.gz" "${NAME}")

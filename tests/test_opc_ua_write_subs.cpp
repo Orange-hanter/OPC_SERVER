@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 using opc::adapters::ManualClock;
 using opc::adapters::OpcUaServer;
@@ -171,7 +172,11 @@ TEST_CASE("UA Write enqueues Dispatcher and reaches Modbus", "[opcua][write]") {
         return dispatcher.enqueue_write(id, std::move(value));
     });
     REQUIRE(server.start(project));
-    REQUIRE(server.bind_index(index, store));
+    std::vector<opc::ports::OpcUaTagSpec> specs;
+    for (const auto& b : index.tags()) {
+        specs.push_back({.id = b.id, .tag = b.tag});
+    }
+    REQUIRE(server.bind_tags(store, specs));
 
     UA_Client* client = UA_Client_new();
     UA_ClientConfig_setDefault(UA_Client_getConfig(client));
@@ -222,7 +227,11 @@ TEST_CASE("UA Subscription notifies on TagStore publish", "[opcua][subscription]
 
     auto index = opc::core::RuntimeIndex::build(project);
     opc::core::TagStore store;
-    REQUIRE(server.bind_index(index, store));
+    std::vector<opc::ports::OpcUaTagSpec> specs;
+    for (const auto& b : index.tags()) {
+        specs.push_back({.id = b.id, .tag = b.tag});
+    }
+    REQUIRE(server.bind_tags(store, specs));
 
     auto level = index.find_by_name("Tank1.Level");
     REQUIRE(level);
@@ -283,6 +292,49 @@ TEST_CASE("UA Subscription notifies on TagStore publish", "[opcua][subscription]
     UA_NodeId_clear(&plant);
     UA_NodeId_clear(&tank);
     UA_NodeId_clear(&level_node);
+    UA_Client_disconnect(client);
+    UA_Client_delete(client);
+    server.stop();
+}
+
+TEST_CASE("UA write to non-writable tag returns BadNotWritable", "[opcua][write][hardening]") {
+    const auto port = free_tcp_port();
+    auto project = stage4_project(port);
+    NullLog log;
+    OpcUaServer server{&log};
+    REQUIRE(server.start(project));
+    auto index = opc::core::RuntimeIndex::build(project);
+    opc::core::TagStore store;
+    std::vector<opc::ports::OpcUaTagSpec> specs;
+    for (const auto& b : index.tags()) {
+        specs.push_back({.id = b.id, .tag = b.tag});
+    }
+    server.set_write_handler([](opc::domain::TagId, opc::domain::ScalarValue) -> opc::domain::Result<void> {
+        return {};
+    });
+    REQUIRE(server.bind_tags(store, specs));
+
+    UA_Client* client = UA_Client_new();
+    UA_ClientConfig_setDefault(UA_Client_getConfig(client));
+    REQUIRE(UA_Client_connect(client, server.endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
+
+    UA_NodeId objects = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
+    UA_NodeId plant = find_child(client, objects, "Plant");
+    UA_NodeId tank = find_child(client, plant, "Tank1");
+    UA_NodeId level = find_child(client, tank, "Level");
+    REQUIRE(level.identifierType == UA_NODEIDTYPE_NUMERIC);
+
+    UA_Variant write_value;
+    UA_Variant_init(&write_value);
+    UA_Float v = 1.5f;
+    UA_Variant_setScalarCopy(&write_value, &v, &UA_TYPES[UA_TYPES_FLOAT]);
+    const auto status = UA_Client_writeValueAttribute(client, level, &write_value);
+    UA_Variant_clear(&write_value);
+    CHECK(status == UA_STATUSCODE_BADNOTWRITABLE);
+
+    UA_NodeId_clear(&plant);
+    UA_NodeId_clear(&tank);
+    UA_NodeId_clear(&level);
     UA_Client_disconnect(client);
     UA_Client_delete(client);
     server.stop();
