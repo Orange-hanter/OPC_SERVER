@@ -132,6 +132,7 @@ add_library(opc_project
   Src/project/load.cpp
   Src/project/validate.cpp
   Src/project/migrate_legacy.cpp
+  Src/project/doctor.cpp
 )
 add_library(opc::project ALIAS opc_project)
 target_include_directories(opc_project
@@ -230,6 +231,7 @@ if(BUILD_TESTING)
 
   add_executable(opc_tests
     tests/test_project.cpp
+    tests/test_doctor.cpp
     tests/test_tag_store.cpp
     tests/test_fake_modbus.cpp
     tests/test_translator.cpp

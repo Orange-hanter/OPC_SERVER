@@ -1,5 +1,6 @@
 #include "project/load.hpp"
 #include "project/migrate_legacy.hpp"
+#include "project/doctor.hpp"
 
 #include <cstdlib>
 #include <fstream>
@@ -14,9 +15,10 @@ void print_usage() {
         << "opc-map — tooling for Modbus project maps\n\n"
         << "Usage:\n"
         << "  opc-map validate <project.modbusproj.json>\n"
+        << "  opc-map doctor <project.modbusproj.json>\n"
         << "  opc-map migrate-legacy <config.json> [-o out.modbusproj.json]\n"
         << "  opc-map help\n\n"
-        << "Exit codes: 0 ok, 1 validation errors, 2 I/O or usage error\n";
+        << "Exit codes: 0 ok, 1 validation/doctor errors, 2 I/O or usage error\n";
 }
 
 int cmd_validate(const std::string& path) {
@@ -32,6 +34,26 @@ int cmd_validate(const std::string& path) {
     std::cout << "OK: " << path << " (" << result.project.devices.size() << " devices, "
               << result.project.poll_groups.size() << " poll groups)\n";
     return 0;
+}
+
+int cmd_doctor(const std::string& path) {
+    const auto loaded = opc::project::load_file(path);
+    for (const auto& d : loaded.diagnostics) {
+        const char* level = d.severity == opc::project::Diagnostic::Severity::Error ? "error" : "warning";
+        std::cerr << level << ": " << d.path << ": " << d.message << '\n';
+    }
+    if (!loaded.ok) {
+        std::cerr << "doctor: project failed validation: " << path << '\n';
+        return 1;
+    }
+    const auto report = opc::project::doctor(loaded.project);
+    for (const auto& d : report.findings) {
+        const char* level = d.severity == opc::project::Diagnostic::Severity::Error ? "error" : "warning";
+        std::cout << level << ": " << d.path << ": " << d.message << '\n';
+    }
+    std::cout << "doctor: " << report.error_count << " error(s), " << report.warning_count
+              << " warning(s)\n";
+    return report.error_count > 0 ? 1 : 0;
 }
 
 int cmd_migrate_legacy(const std::string& legacy_path, const std::string& out_path) {
@@ -81,6 +103,13 @@ int main(int argc, char** argv) {
             return 2;
         }
         return cmd_validate(argv[2]);
+    }
+    if (cmd == "doctor") {
+        if (argc != 3) {
+            print_usage();
+            return 2;
+        }
+        return cmd_doctor(argv[2]);
     }
     if (cmd == "migrate-legacy") {
         if (argc < 3) {

@@ -73,7 +73,8 @@
 
 ### Этап 6 — Удобство разметки карт
 
-- `opc-map doctor`, `import-csv`, `gen-nodeset`
+- [x] `opc-map doctor` (static overlaps, holes, unpolled tags, sparse blocks)
+- [ ] `import-csv`, `gen-nodeset`
 - TUI или лёгкий UI редактора проектов (после стабилизации формата)
 - Профили устройств и библиотека шаблонов
 
