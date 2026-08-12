@@ -2,6 +2,7 @@ add_library(opc_project
   load.cpp
   validate.cpp
   migrate_legacy.cpp
+  doctor.cpp
 )
 add_library(opc::project ALIAS opc_project)
 

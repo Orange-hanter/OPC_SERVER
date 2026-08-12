@@ -4,5 +4,5 @@ opc_apply_project_options(opc-map)
 
 install(TARGETS opc-map
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-  COMPONENT Runtime
+  COMPONENT opc-server
 )

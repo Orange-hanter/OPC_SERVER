@@ -12,5 +12,6 @@ target_link_libraries(opc_app PUBLIC
 )
 target_include_directories(opc_app PUBLIC
   "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/Src>"
+  "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>"
 )
 opc_apply_project_options(opc_app)

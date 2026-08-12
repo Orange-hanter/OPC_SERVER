@@ -46,6 +46,47 @@ function(_opc_fetch_catch2)
   FetchContent_MakeAvailable(Catch2)
 endfunction()
 
+function(_opc_fetch_observability)
+  set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+  set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG v1.15.1
+    GIT_SHALLOW TRUE
+    SYSTEM
+    EXCLUDE_FROM_ALL
+  )
+  FetchContent_MakeAvailable(spdlog)
+
+  set(_OPC_SAVED_BUILD_TESTING "${BUILD_TESTING}")
+  set(BUILD_TESTING OFF)
+  set(WITH_OTLP_GRPC OFF CACHE BOOL "" FORCE)
+  set(WITH_OTLP_HTTP ${OPC_WITH_OTLP} CACHE BOOL "" FORCE)
+  set(WITH_OTLP_FILE OFF CACHE BOOL "" FORCE)
+  set(WITH_PROMETHEUS OFF CACHE BOOL "" FORCE)
+  set(WITH_ZIPKIN OFF CACHE BOOL "" FORCE)
+  set(WITH_ELASTICSEARCH OFF CACHE BOOL "" FORCE)
+  set(WITH_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(WITH_BENCHMARK OFF CACHE BOOL "" FORCE)
+  set(WITH_FUNC_TESTS OFF CACHE BOOL "" FORCE)
+  set(WITH_STL ON CACHE BOOL "" FORCE)
+  set(WITH_ABSEIL OFF CACHE BOOL "" FORCE)
+  set(OPENTELEMETRY_INSTALL OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(opentelemetry-cpp
+    GIT_REPOSITORY https://github.com/open-telemetry/opentelemetry-cpp.git
+    GIT_TAG v1.20.0
+    GIT_SHALLOW TRUE
+    SYSTEM
+    EXCLUDE_FROM_ALL
+  )
+  FetchContent_MakeAvailable(opentelemetry-cpp)
+  set(BUILD_TESTING "${_OPC_SAVED_BUILD_TESTING}")
+  if(BUILD_TESTING)
+    enable_testing()
+  endif()
+endfunction()
+
 function(opc_setup_dependencies)
   string(TOUPPER "${OPC_DEPENDENCY_PROVIDER}" _provider)
   set(_OPC_VALID_PROVIDERS AUTO CONAN FETCHCONTENT)
@@ -95,6 +136,9 @@ function(opc_setup_dependencies)
   if(NOT _open62541_target)
     message(FATAL_ERROR "No usable open62541 CMake target was found.")
   endif()
+
+  find_package(SQLite3 REQUIRED)
+  _opc_fetch_observability()
 
   set(OPC_OPEN62541_TARGET "${_open62541_target}" PARENT_SCOPE)
   set(OPC_CATCH_DISCOVERY_MODULE "${_catch2_discovery_module}" PARENT_SCOPE)
