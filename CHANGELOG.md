@@ -9,6 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Stage 5 Historian/Debug (ADR-0014): `RingHistorian`, `SqliteHistorian`, TagStore
+  subscription in `ServerRuntime`, CLI `--historian-db` / `--historian-capacity` /
+  `--no-historian` / `--frame-log`
+- Modbus frame journal (`IFrameLog`, wired into `ModbusTcpTransport::transact`)
+- `MemoryMetrics` in-process sink; historian replay helper
+- Stage 5 observability (ADR-0015): `SpdlogLog`, `OtelMetrics` (ostream / optional OTLP),
+  CLI `--log-level` / `--log-file` / `--metrics-export` / `--otlp-endpoint`;
+  dispatcher `modbus_poll_rtt_ms` histogram
+- Stage 5 tests (`tests/test_historian.cpp`, `tests/test_frame_log.cpp`)
+- Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
+- Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - Stage 4.5 hardening (ADR-0013): UA DataSource TagStore reads, write StatusCodes,
   facade `bind_tags`/`set_write_handler`, write-queue bounds, value-preserving quality updates
 - `OPC_SERVER --version` and generated version header; install layout unchanged

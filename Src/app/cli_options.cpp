@@ -4,21 +4,75 @@
 #include <string_view>
 
 namespace opc::app {
+namespace {
+
+bool parse_log_level(std::string_view text, LogLevelOption& out) {
+    if (text == "trace") {
+        out = LogLevelOption::Trace;
+        return true;
+    }
+    if (text == "debug") {
+        out = LogLevelOption::Debug;
+        return true;
+    }
+    if (text == "info") {
+        out = LogLevelOption::Info;
+        return true;
+    }
+    if (text == "warn" || text == "warning") {
+        out = LogLevelOption::Warn;
+        return true;
+    }
+    if (text == "error") {
+        out = LogLevelOption::Error;
+        return true;
+    }
+    return false;
+}
+
+bool parse_metrics_export(std::string_view text, MetricsExportOption& out) {
+    if (text == "none") {
+        out = MetricsExportOption::None;
+        return true;
+    }
+    if (text == "ostream" || text == "stdout") {
+        out = MetricsExportOption::OStream;
+        return true;
+    }
+    if (text == "otlp" || text == "otlp-http") {
+        out = MetricsExportOption::OtlpHttp;
+        return true;
+    }
+    return false;
+}
+
+}  // namespace
 
 void print_usage(std::ostream& out) {
     out << "OPC_SERVER — Modbus→OPC UA industrial gateway\n\n"
         << "Usage:\n"
         << "  OPC_SERVER [--project <file.modbusproj.json>] [--once] [--watch] [--period-ms N]\n"
-        << "             [--no-opcua]\n"
+        << "             [--no-opcua] [--no-historian] [--historian-capacity N]\n"
+        << "             [--historian-db <path.sqlite>] [--frame-log <path>]\n"
+        << "             [--log-level LEVEL] [--log-file <path>]\n"
+        << "             [--metrics-export none|ostream|otlp] [--otlp-endpoint URL]\n"
         << "  OPC_SERVER --version\n"
         << "  OPC_SERVER --help\n\n"
         << "Options:\n"
-        << "  --project <path>   Path to Modbus project map (default: search common paths)\n"
-        << "  --once             Run one poll cycle across endpoints and exit\n"
-        << "  --watch            Print tag watchlist after each poll\n"
-        << "  --period-ms <n>    Loop sleep between polls (default 1000)\n"
-        << "  --no-opcua         Disable OPC UA northbound server\n"
-        << "  --version          Print version and exit\n";
+        << "  --project <path>            Path to Modbus project map (default: search common paths)\n"
+        << "  --once                      Run one poll cycle across endpoints and exit\n"
+        << "  --watch                     Print tag watchlist after each poll\n"
+        << "  --period-ms <n>             Loop sleep between polls (default 1000)\n"
+        << "  --no-opcua                  Disable OPC UA northbound server\n"
+        << "  --no-historian              Disable TagStore historian subscription\n"
+        << "  --historian-capacity <n>    Hot ring sample capacity (default 4096)\n"
+        << "  --historian-db <path>       Cold SQLite path (enables flush of hot samples)\n"
+        << "  --frame-log <path>          Append Modbus TX/RX frame journal to file\n"
+        << "  --log-level <level>         trace|debug|info|warn|error (default info)\n"
+        << "  --log-file <path>           Also write rotating spdlog file sink\n"
+        << "  --metrics-export <mode>     none|ostream|otlp (default none)\n"
+        << "  --otlp-endpoint <url>       OTLP/HTTP metrics URL (requires -DOPC_WITH_OTLP=ON)\n"
+        << "  --version                   Print version and exit\n";
 }
 
 CliOptions parse_cli(int argc, char const* argv[]) {
@@ -45,6 +99,10 @@ CliOptions parse_cli(int argc, char const* argv[]) {
             opts.enable_opcua = false;
             continue;
         }
+        if (arg == "--no-historian") {
+            opts.enable_historian = false;
+            continue;
+        }
         if (arg == "--project") {
             if (i + 1 >= argc) {
                 opts.errors.emplace_back("--project requires a path");
@@ -63,6 +121,75 @@ CliOptions parse_cli(int argc, char const* argv[]) {
             } catch (...) {
                 opts.errors.emplace_back("invalid --period-ms value");
             }
+            continue;
+        }
+        if (arg == "--historian-capacity") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--historian-capacity requires a number");
+                break;
+            }
+            try {
+                const int n = std::stoi(argv[++i]);
+                if (n < 1) {
+                    opts.errors.emplace_back("--historian-capacity must be >= 1");
+                } else {
+                    opts.historian_capacity = static_cast<std::size_t>(n);
+                }
+            } catch (...) {
+                opts.errors.emplace_back("invalid --historian-capacity value");
+            }
+            continue;
+        }
+        if (arg == "--historian-db") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--historian-db requires a path");
+                break;
+            }
+            opts.historian_db = argv[++i];
+            continue;
+        }
+        if (arg == "--frame-log") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--frame-log requires a path");
+                break;
+            }
+            opts.frame_log_path = argv[++i];
+            continue;
+        }
+        if (arg == "--log-level") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--log-level requires a value");
+                break;
+            }
+            if (!parse_log_level(argv[++i], opts.log_level)) {
+                opts.errors.emplace_back("invalid --log-level (use trace|debug|info|warn|error)");
+            }
+            continue;
+        }
+        if (arg == "--log-file") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--log-file requires a path");
+                break;
+            }
+            opts.log_file = argv[++i];
+            continue;
+        }
+        if (arg == "--metrics-export") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--metrics-export requires a value");
+                break;
+            }
+            if (!parse_metrics_export(argv[++i], opts.metrics_export)) {
+                opts.errors.emplace_back("invalid --metrics-export (use none|ostream|otlp)");
+            }
+            continue;
+        }
+        if (arg == "--otlp-endpoint") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--otlp-endpoint requires a URL");
+                break;
+            }
+            opts.otlp_endpoint = argv[++i];
             continue;
         }
         opts.errors.emplace_back("unknown argument: " + std::string(arg));

@@ -3,24 +3,24 @@
 #include "ports/i_frame_log.hpp"
 #include "ports/i_modbus_transport.hpp"
 
-#include <cstdint>
-#include <mutex>
+#include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace opc::adapters {
 
-struct ModbusTcpTransportOptions {
-    int response_timeout_ms{1000};
-    ports::IFrameLog* frame_log{nullptr};
-    std::string endpoint_id;
-};
+/// Parse a FileFrameLog text journal (comments starting with '#' are skipped).
+[[nodiscard]] domain::Result<std::vector<ports::FrameRecord>>
+load_frame_log_file(const std::string& path);
 
-/// Synchronous Modbus TCP client (call only from one endpoint strand — ADR-0002/0007).
-class ModbusTcpTransport final : public ports::IModbusTransport {
+[[nodiscard]] domain::Result<ports::FrameRecord>
+parse_frame_log_line(std::string_view line);
+
+/// Replay recorded Modbus TCP frames as an `IModbusTransport` (no field I/O).
+class ReplayModbusTransport final : public ports::IModbusTransport {
 public:
-    explicit ModbusTcpTransport(int response_timeout_ms = 1000);
-    explicit ModbusTcpTransport(ModbusTcpTransportOptions options);
+    explicit ReplayModbusTransport(std::vector<ports::FrameRecord> frames);
 
     domain::Result<void> connect(const ports::EndpointAddress& endpoint) override;
     void close() override;
@@ -49,27 +49,15 @@ public:
     domain::Result<void>
     write_single_coil(std::uint8_t unit, std::uint16_t address, bool value) override;
 
-    void set_frame_log(ports::IFrameLog* log) { frame_log_ = log; }
-    void set_endpoint_id(std::string id) { endpoint_id_ = std::move(id); }
+    [[nodiscard]] std::size_t remaining() const { return frames_.size() - next_; }
 
 private:
-    domain::Result<std::vector<std::uint8_t>>
-    transact(std::uint8_t unit, std::span<const std::uint8_t> pdu);
+    domain::Result<ports::FrameRecord> consume();
+    domain::Result<std::vector<std::uint8_t>> next_pdu();
 
-    domain::Result<std::vector<std::uint16_t>>
-    read_registers(std::uint8_t function, std::uint8_t unit, std::uint16_t address, std::uint16_t quantity);
-
-    domain::Result<std::vector<bool>>
-    read_bits(std::uint8_t function, std::uint8_t unit, std::uint16_t address, std::uint16_t quantity);
-
-    void emit_frame(ports::FrameRecord frame);
-
-    int fd_{-1};
-    int response_timeout_ms_{1000};
-    std::uint16_t transaction_id_{1};
-    mutable std::mutex mutex_;
-    ports::IFrameLog* frame_log_{nullptr};
-    std::string endpoint_id_;
+    std::vector<ports::FrameRecord> frames_;
+    std::size_t next_{0};
+    bool connected_{false};
 };
 
 }  // namespace opc::adapters

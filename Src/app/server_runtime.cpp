@@ -26,6 +26,8 @@ ServerRuntime::ServerRuntime(ServerRuntimeDeps deps)
       clock_(deps.clock),
       metrics_(deps.metrics),
       log_(deps.log),
+      historian_(deps.historian),
+      frame_log_(deps.frame_log),
       transport_factory_(std::move(deps.transport_factory)),
       opcua_(std::move(deps.opcua)) {
     dispatcher_ = std::make_unique<core::Dispatcher>(core::Dispatcher::Dependencies{
@@ -50,7 +52,7 @@ domain::Result<std::unique_ptr<ServerRuntime>> ServerRuntime::create(ServerRunti
             domain::ErrorCode::InvalidArgument, "clock is required", "app.runtime", false});
     }
     if (!deps.transport_factory) {
-        deps.transport_factory = default_tcp_transport_factory();
+        deps.transport_factory = default_tcp_transport_factory(deps.frame_log);
     }
     return std::unique_ptr<ServerRuntime>(new ServerRuntime(std::move(deps)));
 }
@@ -99,11 +101,17 @@ domain::Result<void> ServerRuntime::start() {
         }
     }
 
+    if (historian_ != nullptr && !historian_sub_) {
+        historian_sub_ = tag_store_.subscribe(
+            [this](domain::TagId id, const domain::TagValue& value) { historian_->record(id, value); });
+    }
+
     started_ = true;
     log_msg(log_, ports::LogLevel::Info,
             "runtime started: " + std::to_string(transports_.size()) + " endpoints, " +
                 std::to_string(index_.tags().size()) + " tags" +
-                (opcua_ != nullptr ? ", opcua on" : ", opcua off"));
+                (opcua_ != nullptr ? ", opcua on" : ", opcua off") +
+                (historian_ != nullptr ? ", historian on" : ""));
     return {};
 }
 
@@ -124,6 +132,11 @@ domain::Result<void> ServerRuntime::poll_once(domain::TimestampMs now) {
     }
     if (opcua_ != nullptr) {
         opcua_->iterate();
+    }
+    if (historian_ != nullptr) {
+        if (auto flushed = historian_->flush(); !flushed) {
+            log_msg(log_, ports::LogLevel::Warn, "historian flush: " + flushed.error().message);
+        }
     }
     return first_error;
 }
@@ -165,6 +178,15 @@ void ServerRuntime::write_watchlist(std::ostream& out) const {
 }
 
 void ServerRuntime::stop() {
+    if (historian_sub_) {
+        tag_store_.unsubscribe(*historian_sub_);
+        historian_sub_.reset();
+    }
+    if (historian_ != nullptr) {
+        if (auto flushed = historian_->flush(); !flushed) {
+            log_msg(log_, ports::LogLevel::Warn, "historian flush on stop: " + flushed.error().message);
+        }
+    }
     if (opcua_ != nullptr) {
         opcua_->stop();
     }
@@ -216,9 +238,13 @@ load_project_or_error(const std::string& path, ports::ILog* log) {
         std::make_shared<project::Project>(std::move(loaded.project)));
 }
 
-TransportFactory default_tcp_transport_factory() {
-    return [](const project::Endpoint& endpoint) -> std::unique_ptr<ports::IModbusTransport> {
-        return std::make_unique<adapters::ModbusTcpTransport>(endpoint.response_timeout_ms);
+TransportFactory default_tcp_transport_factory(ports::IFrameLog* frame_log) {
+    return [frame_log](const project::Endpoint& endpoint) -> std::unique_ptr<ports::IModbusTransport> {
+        return std::make_unique<adapters::ModbusTcpTransport>(adapters::ModbusTcpTransportOptions{
+            .response_timeout_ms = endpoint.response_timeout_ms,
+            .frame_log = frame_log,
+            .endpoint_id = endpoint.id,
+        });
     };
 }
 

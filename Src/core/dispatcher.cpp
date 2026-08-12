@@ -72,6 +72,13 @@ domain::Result<void> Dispatcher::poll_tag(const TagBinding& binding,
     const auto& tag = binding.tag;
     const auto qty = static_cast<std::uint16_t>(regs_for(tag));
     const auto addr = static_cast<std::uint16_t>(tag.address);
+    const auto t0 = deps_.clock->now_ms();
+    const auto observe_rtt = [&]() {
+        if (deps_.metrics != nullptr) {
+            deps_.metrics->histogram_observe(
+                "modbus_poll_rtt_ms", static_cast<double>(deps_.clock->now_ms() - t0));
+        }
+    };
 
     domain::Result<std::vector<std::uint16_t>> regs{std::unexpected(domain::Error{})};
     if (tag.area == project::Area::Holding) {
@@ -81,6 +88,7 @@ domain::Result<void> Dispatcher::poll_tag(const TagBinding& binding,
     } else if (tag.area == project::Area::Coil) {
         auto coils = transport.read_coils(binding.unit_id, addr, qty);
         if (!coils) {
+            observe_rtt();
             publish_quality(deps_.tag_store, binding.id, domain::Quality::Bad,
                             domain::QualityReason::NoCommunication, now);
             if (deps_.metrics != nullptr) {
@@ -97,8 +105,12 @@ domain::Result<void> Dispatcher::poll_tag(const TagBinding& binding,
     } else {
         auto discs = transport.read_discrete_inputs(binding.unit_id, addr, qty);
         if (!discs) {
+            observe_rtt();
             publish_quality(deps_.tag_store, binding.id, domain::Quality::Bad,
                             domain::QualityReason::NoCommunication, now);
+            if (deps_.metrics != nullptr) {
+                deps_.metrics->counter_add("modbus_poll_errors_total");
+            }
             return std::unexpected(transport_error(discs.error()));
         }
         std::vector<std::uint16_t> as_regs;
@@ -107,6 +119,8 @@ domain::Result<void> Dispatcher::poll_tag(const TagBinding& binding,
         }
         regs = std::move(as_regs);
     }
+
+    observe_rtt();
 
     if (!regs) {
         const auto reason = regs.error().code == domain::ErrorCode::Timeout
