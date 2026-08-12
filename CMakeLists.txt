@@ -156,6 +156,7 @@ add_library(opc_adapters
   Src/adapters/ring_historian.cpp
   Src/adapters/sqlite_historian.cpp
   Src/adapters/frame_log.cpp
+  Src/adapters/frame_replay.cpp
   Src/adapters/memory_metrics.cpp
   Src/adapters/spdlog_log.cpp
   Src/adapters/otel_metrics.cpp
@@ -239,6 +240,7 @@ if(BUILD_TESTING)
     tests/test_historian.cpp
     tests/test_frame_log.cpp
     tests/test_spdlog_otel.cpp
+    tests/test_frame_replay.cpp
   )
   target_link_libraries(opc_tests PRIVATE opc::app opc::adapters opc::core opc::project Catch2::Catch2WithMain open62541)
   target_include_directories(opc_tests PRIVATE ${CMAKE_BINARY_DIR}/generated)

@@ -119,6 +119,24 @@ TEST_CASE("SqliteHistorian flushes hot samples to cold storage", "[adapters][his
     std::filesystem::remove(db_path);
 }
 
+TEST_CASE("SqliteHistorian keeps pending samples beyond hot capacity until flush",
+          "[adapters][historian][sqlite]") {
+    const auto db_path =
+        (std::filesystem::temp_directory_path() / "opc_historian_pending.sqlite").string();
+    std::filesystem::remove(db_path);
+    SqliteHistorian hist(db_path, 4);
+    REQUIRE_FALSE(hist.open_error().has_value());
+    for (int i = 0; i < 12; ++i) {
+        hist.record(1, make_good(static_cast<float>(i), 1000 + i));
+    }
+    REQUIRE(hist.flush());
+    auto cold = hist.load_cold(32);
+    REQUIRE(cold);
+    REQUIRE(cold->size() == 12);
+    REQUIRE(hist.dropped() == 8);  // hot ring of 4 dropped 8
+    std::filesystem::remove(db_path);
+}
+
 TEST_CASE("ServerRuntime subscribes historian to TagStore", "[app][historian]") {
     auto project = tiny_project();
     opc::adapters::ManualClock clock{1000};

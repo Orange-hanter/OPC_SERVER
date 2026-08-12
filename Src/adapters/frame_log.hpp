@@ -28,8 +28,8 @@ private:
 class MemoryFrameLog final : public ports::IFrameLog {
 public:
     void log_frame(const ports::FrameRecord& frame) override;
-    [[nodiscard]] const std::vector<ports::FrameRecord>& frames() const { return frames_; }
-    void clear() { frames_.clear(); }
+    [[nodiscard]] std::vector<ports::FrameRecord> frames() const;
+    void clear();
 
 private:
     mutable std::mutex mutex_;

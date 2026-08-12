@@ -22,7 +22,7 @@ struct CliOptions {
     std::string frame_log_path;  // empty = disabled
     LogLevelOption log_level{LogLevelOption::Info};
     std::string log_file;  // empty = stderr only
-    MetricsExportOption metrics_export{MetricsExportOption::OStream};
+    MetricsExportOption metrics_export{MetricsExportOption::None};
     std::string otlp_endpoint;  // used when metrics_export == OtlpHttp
     bool help{false};
     bool version{false};

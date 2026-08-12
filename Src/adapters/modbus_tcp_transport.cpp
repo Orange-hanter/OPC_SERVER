@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <mutex>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -97,7 +98,7 @@ bool ModbusTcpTransport::is_connected() const {
 
 domain::Result<std::vector<std::uint8_t>>
 ModbusTcpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pdu) {
-    std::lock_guard lock(mutex_);
+    std::unique_lock lock(mutex_);
     if (fd_ < 0) {
         return std::unexpected(make_err(domain::ErrorCode::Connection, "not connected"));
     }
@@ -127,6 +128,7 @@ ModbusTcpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pd
                 frame.exception_code = *result.error().protocol_status;
             }
         }
+        lock.unlock();
         emit_frame(std::move(frame));
         return result;
     };

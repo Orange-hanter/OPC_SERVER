@@ -58,12 +58,21 @@ void FileFrameLog::log_frame(const ports::FrameRecord& frame) {
         out_ << '-';
     }
     out_ << ' ' << to_hex(frame.tx) << " | " << to_hex(frame.rx) << '\n';
-    out_.flush();
 }
 
 void MemoryFrameLog::log_frame(const ports::FrameRecord& frame) {
     std::lock_guard lock(mutex_);
     frames_.push_back(frame);
+}
+
+std::vector<ports::FrameRecord> MemoryFrameLog::frames() const {
+    std::lock_guard lock(mutex_);
+    return frames_;
+}
+
+void MemoryFrameLog::clear() {
+    std::lock_guard lock(mutex_);
+    frames_.clear();
 }
 
 }  // namespace opc::adapters

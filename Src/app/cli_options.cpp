@@ -70,7 +70,7 @@ void print_usage(std::ostream& out) {
         << "  --frame-log <path>          Append Modbus TX/RX frame journal to file\n"
         << "  --log-level <level>         trace|debug|info|warn|error (default info)\n"
         << "  --log-file <path>           Also write rotating spdlog file sink\n"
-        << "  --metrics-export <mode>     none|ostream|otlp (default ostream)\n"
+        << "  --metrics-export <mode>     none|ostream|otlp (default none)\n"
         << "  --otlp-endpoint <url>       OTLP/HTTP metrics URL (requires -DOPC_WITH_OTLP=ON)\n"
         << "  --version                   Print version and exit\n";
 }

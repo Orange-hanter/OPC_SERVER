@@ -170,6 +170,8 @@ int Application::run() {
     }
     if (auto s = runtime_->start(); !s) {
         log_->error("app", "start failed: " + s.error().message);
+        runtime_->stop();
+        return 1;
     }
 
     const auto poll_and_watch = [&](domain::TimestampMs now) {

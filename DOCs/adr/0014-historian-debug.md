@@ -13,7 +13,7 @@ Stage 5 needs a local gateway buffer for short-horizon trends/debug and a PCAP-l
 2. **Subscription**: `ServerRuntime` subscribes the historian to `TagStore` on `start()` and unsubscribes/`flush()` on `stop()`. Each `poll_once` also flushes cold pending.
 3. **`IFrameLog`**: optional adapter injected into `ModbusTcpTransport` via `ModbusTcpTransportOptions`. Logs full MBAP+PDU TX/RX, RTT, exception, endpoint id.
 4. **Metrics**: production uses `OtelMetrics` (ADR-0015); `MemoryMetrics` remains for unit tests.
-5. **Replay**: `historian_replay.hpp` publishes samples back into `ITagStore` (no field I/O).
+5. **Replay**: `historian_replay.hpp` republishes samples into `ITagStore`; `ReplayModbusTransport` plays a frame journal without field I/O.
 
 ## Consequences
 

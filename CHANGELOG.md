@@ -18,6 +18,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   CLI `--log-level` / `--log-file` / `--metrics-export` / `--otlp-endpoint`;
   dispatcher `modbus_poll_rtt_ms` histogram
 - Stage 5 tests (`tests/test_historian.cpp`, `tests/test_frame_log.cpp`)
+- Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
+- Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - Stage 4.5 hardening (ADR-0013): UA DataSource TagStore reads, write StatusCodes,
   facade `bind_tags`/`set_write_handler`, write-queue bounds, value-preserving quality updates
 - `OPC_SERVER --version` and generated version header; install layout unchanged

@@ -53,6 +53,7 @@ private:
     mutable std::mutex mutex_;
     std::vector<ports::HistorianSample> pending_;
     std::size_t pending_cap_{0};
+    std::uint64_t cold_pending_dropped_{0};
 };
 
 }  // namespace opc::adapters

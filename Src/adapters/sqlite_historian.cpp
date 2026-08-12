@@ -1,5 +1,6 @@
 #include "adapters/sqlite_historian.hpp"
 
+#include <cstddef>
 #include <sstream>
 #include <string_view>
 #include <type_traits>
@@ -152,12 +153,6 @@ domain::Result<void> SqliteHistorian::ensure_schema() {
 void SqliteHistorian::record(domain::TagId id, const domain::TagValue& value) {
     hot_->record(id, value);
     std::lock_guard lock(mutex_);
-    if (pending_.size() >= pending_cap_) {
-        pending_.erase(pending_.begin());
-        if (metrics_ != nullptr) {
-            metrics_->counter_add("historian.cold_pending_dropped", 1.0);
-        }
-    }
     pending_.push_back(ports::HistorianSample{.id = id, .value = value});
 }
 
@@ -224,10 +219,15 @@ domain::Result<void> SqliteHistorian::flush() {
     auto result = insert_batch(batch);
     if (!result) {
         std::lock_guard lock(mutex_);
-        // Re-queue failed batch at front (bounded).
         pending_.insert(pending_.begin(), batch.begin(), batch.end());
-        if (pending_.size() > pending_cap_ * 2) {
-            pending_.resize(pending_cap_ * 2);
+        const std::size_t max_pending = pending_cap_ * 4;
+        if (pending_.size() > max_pending) {
+            const std::size_t drop = pending_.size() - max_pending;
+            pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(drop));
+            cold_pending_dropped_ += drop;
+            if (metrics_ != nullptr) {
+                metrics_->counter_add("historian.cold_pending_dropped", static_cast<double>(drop));
+            }
         }
         return result;
     }
@@ -242,7 +242,9 @@ std::vector<ports::HistorianSample> SqliteHistorian::recent(std::size_t max) con
 }
 
 std::uint64_t SqliteHistorian::dropped() const {
-    return hot_->dropped();
+    const auto hot_dropped = hot_->dropped();
+    std::lock_guard lock(mutex_);
+    return hot_dropped + cold_pending_dropped_;
 }
 
 domain::Result<std::vector<ports::HistorianSample>>
