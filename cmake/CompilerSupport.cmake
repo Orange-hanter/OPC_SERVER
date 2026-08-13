@@ -22,6 +22,18 @@ function(_opc_check_expected_with_standard standard result)
 endfunction()
 
 function(opc_detect_cxx_standard output_variable)
+  if(MSVC)
+    # MSVC exposes the latest draft through /std:c++latest; CMake's numeric
+    # CXX_STANDARD remains 23 until a portable C++26 mode is available.
+    _opc_check_expected_with_standard(23 OPC_HAS_STD_EXPECTED_CXX23)
+    if(NOT OPC_HAS_STD_EXPECTED_CXX23)
+      message(FATAL_ERROR
+        "OPC_SERVER requires std::expected and a C++23-capable standard library.")
+    endif()
+    set("${output_variable}" 23 PARENT_SCOPE)
+    return()
+  endif()
+
   _opc_check_expected_with_standard(26 OPC_HAS_STD_EXPECTED_CXX26)
   if(OPC_HAS_STD_EXPECTED_CXX26)
     set("${output_variable}" 26 PARENT_SCOPE)
