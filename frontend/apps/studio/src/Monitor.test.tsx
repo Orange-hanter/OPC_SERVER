@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { I18nContext, translate } from './i18n'
 import { Monitor } from './Monitor'
 import type { ConnectionProfile, MonitorEvent, OpcUaMonitor, UaNode } from './domain'

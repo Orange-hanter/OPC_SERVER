@@ -330,7 +330,10 @@ TEST_CASE("UA write to non-writable tag returns BadNotWritable", "[integration][
     UA_Variant_setScalarCopy(&write_value, &v, &UA_TYPES[UA_TYPES_FLOAT]);
     const auto status = UA_Client_writeValueAttribute(client, level, &write_value);
     UA_Variant_clear(&write_value);
-    CHECK(status == UA_STATUSCODE_BADNOTWRITABLE);
+    // open62541 1.4 rejects CurrentWrite=0 with BadNotWritable; 1.5 uses
+    // UserAccessLevel and returns BadUserAccessDenied before the DataSource.
+    CHECK((status == UA_STATUSCODE_BADNOTWRITABLE ||
+           status == UA_STATUSCODE_BADUSERACCESSDENIED));
 
     UA_NodeId_clear(&plant);
     UA_NodeId_clear(&tank);
