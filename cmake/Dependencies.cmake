@@ -97,6 +97,32 @@ function(_opc_fetch_asio)
   target_link_libraries(opc_asio INTERFACE Threads::Threads)
 endfunction()
 
+function(_opc_setup_nlohmann_json)
+  if(TARGET nlohmann_json::nlohmann_json)
+    return()
+  endif()
+  add_library(nlohmann_json INTERFACE)
+  add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
+  target_include_directories(nlohmann_json INTERFACE
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/Lib/Json>"
+  )
+endfunction()
+
+function(_opc_fetch_json_schema)
+  _opc_setup_nlohmann_json()
+  set(JSON_VALIDATOR_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(JSON_VALIDATOR_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(JSON_VALIDATOR_INSTALL OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(nlohmann_json_schema_validator
+    GIT_REPOSITORY https://github.com/pboettch/json-schema-validator.git
+    GIT_TAG 2.3.0
+    GIT_SHALLOW TRUE
+    SYSTEM
+    EXCLUDE_FROM_ALL
+  )
+  FetchContent_MakeAvailable(nlohmann_json_schema_validator)
+endfunction()
+
 function(_opc_fetch_observability)
   set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
   set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -193,6 +219,7 @@ function(opc_setup_dependencies)
     _opc_fetch_sqlite()
   endif()
   _opc_fetch_asio()
+  _opc_fetch_json_schema()
   _opc_fetch_observability()
 
   set(OPC_OPEN62541_TARGET "${_open62541_target}" PARENT_SCOPE)

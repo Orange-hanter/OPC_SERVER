@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "adapters/manual_clock.hpp"
+#include "adapters/memory_metrics.hpp"
 #include "adapters/opc_ua_server.hpp"
 #include "adapters/testsupport/fake_modbus_transport.hpp"
 #include "app/cli_options.hpp"
@@ -111,7 +112,8 @@ TEST_CASE("OpcUaServer exposes TagStore values via Read", "[opcua][read]") {
     const auto port = free_tcp_port();
     auto project = ua_sample_project(port);
     NullLog log;
-    OpcUaServer server{&log};
+    opc::adapters::MemoryMetrics metrics;
+    OpcUaServer server{&log, &metrics};
 
     REQUIRE(server.start(project));
 
@@ -152,6 +154,9 @@ TEST_CASE("OpcUaServer exposes TagStore values via Read", "[opcua][read]") {
     const auto endpoint = server.endpoint_url();
     auto connect = UA_Client_connect(client, endpoint.c_str());
     REQUIRE(connect == UA_STATUSCODE_GOOD);
+    CHECK(metrics.gauge("ua_sessions") >= 1.0);
+    CHECK(metrics.gauge("tag_quality.good") == 2.0);
+    CHECK(metrics.gauge("tag_quality") == Catch::Approx(1.0));
 
     // Walk Objects → Plant → Tank1 → Level
     auto find_child = [&](UA_NodeId parent, const char* name) -> UA_NodeId {

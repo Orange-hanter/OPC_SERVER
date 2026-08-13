@@ -108,3 +108,48 @@ TEST_CASE("migrate legacy config.json produces loadable project", "[migrate]") {
     CHECK(result.project.poll_groups.size() == 2);
     CHECK(result.project.endpoints.size() == 1);
 }
+
+TEST_CASE("JSON Schema engine rejects extra properties and empty required arrays", "[project][schema]") {
+    constexpr std::string_view kExtra = R"({
+      "schemaVersion": 1,
+      "name": "extra",
+      "endpoints": [
+        {"id": "ep1", "host": "127.0.0.1", "port": 502, "transport": "tcp"}
+      ],
+      "devices": [
+        {"id": "d1", "endpointId": "ep1", "unitId": 1, "tags": [
+          {"name": "A", "area": "holding", "address": 0, "type": "uint16", "group": "g1"}
+        ]}
+      ],
+      "pollGroups": [
+        {"id": "g1", "periodMs": 100, "priority": "fast", "deviceId": "d1", "tagNames": ["A"]}
+      ],
+      "notInSchema": true
+    })";
+    const auto extra = opc::project::load_json_text(kExtra, "extra.json");
+    REQUIRE_FALSE(extra.ok);
+    bool schema_hit = false;
+    for (const auto& d : extra.diagnostics) {
+        if (d.message.find("json schema") != std::string::npos) {
+            schema_hit = true;
+        }
+    }
+    CHECK(schema_hit);
+
+    constexpr std::string_view kEmpty = R"({
+      "schemaVersion": 1,
+      "name": "empty",
+      "endpoints": [],
+      "devices": [],
+      "pollGroups": []
+    })";
+    const auto empty = opc::project::load_json_text(kEmpty, "empty.json");
+    REQUIRE_FALSE(empty.ok);
+    bool min_items = false;
+    for (const auto& d : empty.diagnostics) {
+        if (d.message.find("json schema") != std::string::npos) {
+            min_items = true;
+        }
+    }
+    CHECK(min_items);
+}

@@ -4,7 +4,6 @@ on:
   push:
     branches: [master]
   pull_request:
-    branches: [master]
   workflow_dispatch:
 
 concurrency:
@@ -61,6 +60,64 @@ jobs:
             dist/opc-server-linux-x64.tar.gz.sha256
           if-no-files-found: error
           retention-days: 14
+
+  asan:
+    name: ASan + UBSan (ubuntu-24.04 / g++)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+
+      - name: Configure
+        run: cmake --preset asan -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+
+      - name: Build
+        run: cmake --build --preset asan --target opc_tests
+
+      - name: Test
+        run: ctest --preset asan --timeout 180
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+  tsan:
+    name: TSan core/runtime (ubuntu-24.04 / g++)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+
+      - name: Configure
+        run: cmake --preset tsan -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+
+      - name: Build
+        run: cmake --build --preset tsan --target opc_tests
+
+      - name: Test
+        # open62541 is not built with TSan; skip UA client/server smoke and monitor browse.
+        run: >
+          ctest --preset tsan --timeout 180
+          -E "OpcUa|OPC UA|UA Write|UA Subscription|UA write|opc-monitor browses"
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
 
   conan:
     name: Conan 2 dependency provider

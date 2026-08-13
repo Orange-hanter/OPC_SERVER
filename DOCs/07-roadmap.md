@@ -24,10 +24,10 @@
 | spdlog + OTel metrics (`none`/`ostream`/`otlp`) | Есть (OTLP только `-DOPC_WITH_OTLP=ON`) |
 | Modular CMake presets + Conan 2 + CI artifacts | Есть |
 | Engineering Studio (Tauri 2) + `opc-monitor` | Есть |
-| JSON Schema **engine** (draft 2020-12) | Нет — semantic checks |
+| JSON Schema **engine** (draft 2020-12) | Есть — инкремент B |
 | Asio reactor / `steady_timer` вместо `sleep` | Есть — инкремент A |
 | Reconnect backoff + Bad/NoCommunication на endpoint | Есть (per-endpoint `mark_endpoint_bad`, не глобальный `mark_stale_before`) |
-| TSan CI | Нет |
+| TSan CI / ASan CI | Есть — инкремент B |
 | `import-csv` / `gen-nodeset` / профили устройств | Нет |
 | Sign / SignAndEncrypt | Нет |
 
@@ -46,7 +46,7 @@
 - [x] Парсер `*.modbusproj.json` + семантическая валидация (по правилам Schema)
 - [x] `opc-map validate` / `opc-map migrate-legacy` (из [config.json](config.json))
 - [x] Unit-тесты на примеры из `DOCs/examples/`
-- [ ] Полная проверка через JSON Schema draft 2020-12 engine (сейчас — эквивалентные semantic checks)
+- [x] Полная проверка через JSON Schema draft 2020-12 engine (bundled schema + semantic checks)
 
 ### Этап 1.5 — Архитектурный каркас (обязателен до poller)
 
@@ -64,7 +64,7 @@
 - [x] `RuntimeIndex` (TagId ↔ project tags)
 - [x] Watchlist в консоли / app composition root
 - [x] Полный reactor (Asio `io_context` + strand per endpoint + timers) — инкремент A
-- [ ] FC15 (`write_multiple_coils`) — порт сейчас только `write_single_coil`
+- [x] FC15 (`write_multiple_coils`) на порте и в Dispatcher (coalesce consecutive coils)
 
 ### Этап 2.5 — Runtime infrastructure
 
@@ -97,8 +97,8 @@
 - [x] `cmake --install` + `OPC_SERVER --version`
 - [x] Modular CMake + Conan 2 + presets (`dev` / `ci` / `asan` / `unity`)
 - [x] Asio reactor / убрать sleep (перенос из 2.5) — инкремент A
-- [ ] TSan CI job
-- [ ] ASan/UBSan job в GitHub Actions (preset `asan` уже есть)
+- [x] TSan CI job (core/runtime; UA smoke skipped)
+- [x] ASan/UBSan job в GitHub Actions (preset `asan`)
 
 ### Этап 5 — Historian и Debug
 
@@ -107,7 +107,7 @@
 - [x] spdlog (`SpdlogLog`) + OpenTelemetry metrics (`OtelMetrics`, ADR-0015)
 - [x] Replay для отладки (`historian_replay.hpp`, `ReplayModbusTransport` / frame log)
 - [ ] OTLP default-on in CI / traces for poll-write
-- [ ] Метрики `ua_sessions`, `tag_quality` из [ADR-0008](adr/0008-observability.md)
+- [x] Метрики `ua_sessions`, `tag_quality` из [ADR-0008](adr/0008-observability.md)
 
 ### Этап 6 — Удобство разметки карт
 
@@ -148,17 +148,17 @@
 
 **Не делалось в A:** SignAndEncrypt, CSV import, OTLP default-on, async Modbus TCP.
 
-### B — Качество CI и completeness poller
+### B — Качество CI и completeness poller (закрыт)
 
-Следующий код после A, можно параллелить:
-
-- TSan job (TagStore / Dispatcher / write queue).
-- ASan preset в CI (не только локально).
-- JSON Schema engine в `opc-map validate` (Stage 1 leftover).
-- FC15 `write_multiple_coils` на порте и в Dispatcher.
+- TSan job (TagStore / Dispatcher / write queue / reactor; UA smoke skipped).
+- ASan preset в CI.
+- JSON Schema engine в `opc-map validate`.
+- FC15 `write_multiple_coils` на порте и coalesce consecutive coils в Dispatcher.
 - Метрики `ua_sessions` / `tag_quality`.
 
 ### C — Инструменты карт (остаток этапа 6)
+
+Следующий код после B:
 
 - `opc-map import-csv` по контракту в [03](03-modbus-projects.md).
 - `opc-map gen-nodeset` (dump дерева / фрагмент UA).
@@ -190,20 +190,24 @@
 3. UA Write не вызывает transport с потока open62541 (`post` на strand).
 4. Обрыв связи → теги **этого** endpoint уходят в Bad/NoCommunication.
 
-### Следующий milestone: инкремент B
+### Milestone: инкремент B — выполнен
 
 TSan/ASan в CI, JSON Schema engine, FC15, метрики `ua_sessions` / `tag_quality`.
+
+### Следующий milestone: инкремент C
+
+`opc-map import-csv` / `gen-nodeset`, профили устройств, runtime doctor.
 
 ## Связь с текущим репозиторием
 
 | Сейчас | Следующая цель |
 |--------|----------------|
-| Asio `io_context` + strand-per-endpoint; sync TCP на strand | Asio-native async Modbus TCP (по желанию); TSan |
+| Asio `io_context` + strand-per-endpoint; sync TCP на strand | Asio-native async Modbus TCP (по желанию) |
 | `reconnectDelayMs` backoff на strand | — |
-| `opc-map` validate/doctor/migrate | import-csv / gen-nodeset |
+| `opc-map` validate (JSON Schema + semantic) / doctor / migrate | import-csv / gen-nodeset |
 | Studio + opc-monitor, security None | SignAndEncrypt + cert profile |
-| OTel metrics, OTLP opt-in | traces poll/write; OTLP в CI по флагу |
-| GCC CI + Conan + Studio matrix | TSan + ASan jobs |
+| OTel metrics including `ua_sessions` / `tag_quality`, OTLP opt-in | traces poll/write; OTLP в CI по флагу |
+| GCC CI + Conan + Studio matrix + ASan/TSan | — |
 
 ## Вне roadmap ядра
 

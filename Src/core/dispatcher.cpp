@@ -305,27 +305,64 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
     auto& transport = *t_it->second;
     const auto now = deps_.clock != nullptr ? deps_.clock->now_ms() : domain::TimestampMs{0};
 
-    for (std::size_t i = 0; i < batch.size(); ++i) {
-        auto& pending = batch[i];
-        auto binding = deps_.index.find_by_id(pending.tag_id);
+    auto requeue_from = [&](std::size_t index) {
+        std::lock_guard lock(write_mutex_);
+        auto& queue = write_queues_[std::string(endpoint_id)];
+        queue.insert(queue.begin(),
+                     std::make_move_iterator(batch.begin() + static_cast<std::ptrdiff_t>(index)),
+                     std::make_move_iterator(batch.end()));
+    };
+
+    for (std::size_t i = 0; i < batch.size();) {
+        auto binding = deps_.index.find_by_id(batch[i].tag_id);
         if (!binding) {
+            ++i;
             continue;
         }
-        auto encoded = Translator::encode(binding->tag, pending.value);
+        auto encoded = Translator::encode(binding->tag, batch[i].value);
         if (!encoded) {
-            publish_quality(deps_.tag_store, pending.tag_id, domain::Quality::Bad,
+            publish_quality(deps_.tag_store, batch[i].tag_id, domain::Quality::Bad,
                             domain::QualityReason::DecodingError, now);
-            std::lock_guard lock(write_mutex_);
-            auto& queue = write_queues_[std::string(endpoint_id)];
-            queue.insert(queue.begin(), std::make_move_iterator(batch.begin() + static_cast<std::ptrdiff_t>(i + 1)),
-                         std::make_move_iterator(batch.end()));
+            requeue_from(i + 1);
             return std::unexpected(encoded.error());
         }
 
         domain::Result<void> wr = {};
         const auto addr = static_cast<std::uint16_t>(binding->tag.address);
+        std::size_t consumed = 1;
+
         if (binding->tag.area == project::Area::Coil) {
-            wr = transport.write_single_coil(binding->unit_id, addr, (*encoded)[0] != 0);
+            std::vector<std::uint8_t> bits;
+            bits.reserve(encoded->size());
+            for (auto reg : *encoded) {
+                bits.push_back(reg != 0 ? 1 : 0);
+            }
+            auto next_addr = static_cast<int>(addr) + static_cast<int>(bits.size());
+            std::size_t j = i + 1;
+            for (; j < batch.size(); ++j) {
+                auto next = deps_.index.find_by_id(batch[j].tag_id);
+                if (!next || next->tag.area != project::Area::Coil ||
+                    next->unit_id != binding->unit_id || next->tag.address != next_addr) {
+                    break;
+                }
+                auto next_encoded = Translator::encode(next->tag, batch[j].value);
+                if (!next_encoded) {
+                    publish_quality(deps_.tag_store, batch[j].tag_id, domain::Quality::Bad,
+                                    domain::QualityReason::DecodingError, now);
+                    requeue_from(j + 1);
+                    return std::unexpected(next_encoded.error());
+                }
+                for (auto reg : *next_encoded) {
+                    bits.push_back(reg != 0 ? 1 : 0);
+                }
+                next_addr += static_cast<int>((*next_encoded).size());
+            }
+            consumed = j - i;
+            if (bits.size() == 1) {
+                wr = transport.write_single_coil(binding->unit_id, addr, bits[0] != 0);
+            } else {
+                wr = transport.write_multiple_coils(binding->unit_id, addr, bits);
+            }
         } else if (encoded->size() == 1) {
             wr = transport.write_single_register(binding->unit_id, addr, (*encoded)[0]);
         } else {
@@ -333,16 +370,16 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
         }
 
         if (!wr) {
-            publish_quality(deps_.tag_store, pending.tag_id, domain::Quality::Bad,
+            publish_quality(deps_.tag_store, batch[i].tag_id, domain::Quality::Bad,
                             domain::QualityReason::WriteRejected, now);
-            std::lock_guard lock(write_mutex_);
-            auto& queue = write_queues_[std::string(endpoint_id)];
-            queue.insert(queue.begin(), std::make_move_iterator(batch.begin() + static_cast<std::ptrdiff_t>(i + 1)),
-                         std::make_move_iterator(batch.end()));
+            requeue_from(i + 1);
             return std::unexpected(wr.error());
         }
-        publish_quality(deps_.tag_store, pending.tag_id, domain::Quality::Good,
-                        domain::QualityReason::None, now, pending.value);
+        for (std::size_t k = 0; k < consumed; ++k) {
+            publish_quality(deps_.tag_store, batch[i + k].tag_id, domain::Quality::Good,
+                            domain::QualityReason::None, now, batch[i + k].value);
+        }
+        i += consumed;
     }
     return {};
 }

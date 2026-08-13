@@ -31,8 +31,8 @@ TagStore/Translator/Dispatcher, sync Modbus TCP за Asio strand-per-endpoint,
 `ServerRuntime`, **OPC UA Read/Write/Subscriptions** (DataSource, security None),
 Diagnostics, historian/frame-log, spdlog/OTel metrics, **OPC Engineering Studio**.
 
-**Следующее:** TSan/ASan в CI, JSON Schema engine, `import-csv`/`gen-nodeset`,
-SignAndEncrypt (инкременты B–D в [roadmap](DOCs/07-roadmap.md)).
+**Следующее:** `opc-map import-csv` / `gen-nodeset` (инкремент C в [roadmap](DOCs/07-roadmap.md)),
+затем SignAndEncrypt.
 
 OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
 

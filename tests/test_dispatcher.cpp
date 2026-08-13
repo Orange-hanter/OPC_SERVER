@@ -10,6 +10,8 @@
 #include "ports/i_metrics.hpp"
 #include "project/load.hpp"
 
+#include <memory>
+
 using opc::adapters::testsupport::FakeModbusTransport;
 using opc::core::Dispatcher;
 using opc::core::RuntimeIndex;
@@ -177,4 +179,56 @@ TEST_CASE("Dispatcher marks every endpoint tag Bad when connect fails", "[core][
     CHECK(level_v->reason == opc::domain::QualityReason::NoCommunication);
     CHECK(sp_v->quality == opc::domain::Quality::Bad);
     CHECK(sp_v->reason == opc::domain::QualityReason::NoCommunication);
+}
+
+TEST_CASE("Dispatcher coalesces consecutive coil writes into FC15", "[core][dispatcher]") {
+    constexpr std::string_view kJson = R"({
+      "schemaVersion": 1,
+      "name": "coils",
+      "endpoints": [
+        {"id": "ep1", "host": "127.0.0.1", "port": 502, "transport": "tcp"}
+      ],
+      "devices": [
+        {"id": "d1", "endpointId": "ep1", "unitId": 1, "tags": [
+          {"name": "C0", "area": "coil", "address": 0, "type": "bool", "writable": true, "group": "g1"},
+          {"name": "C1", "area": "coil", "address": 1, "type": "bool", "writable": true, "group": "g1"}
+        ]}
+      ],
+      "pollGroups": [
+        {"id": "g1", "periodMs": 100, "priority": "fast", "deviceId": "d1", "tagNames": ["C0", "C1"]}
+      ]
+    })";
+    auto loaded = opc::project::load_json_text(kJson, "coils.json");
+    REQUIRE(loaded.ok);
+    auto project = std::make_shared<const opc::project::Project>(std::move(loaded.project));
+    RuntimeIndex index = RuntimeIndex::build(project);
+
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}).has_value());
+
+    auto c0 = index.find_by_name("C0");
+    auto c1 = index.find_by_name("C1");
+    REQUIRE(c0);
+    REQUIRE(c1);
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+    });
+    dispatcher.bind_transport("ep1", &transport);
+    REQUIRE(dispatcher.enqueue_write(c0->id, true).has_value());
+    REQUIRE(dispatcher.enqueue_write(c1->id, false).has_value());
+    REQUIRE(dispatcher.flush_writes("ep1").has_value());
+
+    CHECK(transport.fc15_writes() == 1);
+    CHECK(transport.fc05_writes() == 0);
+    auto coils = transport.read_coils(1, 0, 2);
+    REQUIRE(coils);
+    CHECK((*coils)[0] == true);
+    CHECK((*coils)[1] == false);
 }

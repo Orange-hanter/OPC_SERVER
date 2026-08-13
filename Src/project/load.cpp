@@ -1,4 +1,5 @@
 #include "project/load.hpp"
+#include "project/schema.hpp"
 #include "project/validate.hpp"
 
 #include <json.hpp>
@@ -406,6 +407,7 @@ LoadResult load_json_text(std::string_view text, std::string_view source_name) {
     }
 
     result.project = parse_project(root, result.diagnostics);
+    append_json_schema_diagnostics(root, source_name, result.diagnostics);
     validate(result.project, result.diagnostics);
 
     result.ok = true;

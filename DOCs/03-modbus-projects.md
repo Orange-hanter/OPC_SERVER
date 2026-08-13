@@ -71,7 +71,7 @@ Project
 
 | Команда | Состояние | Поведение |
 |---------|-----------|-----------|
-| `opc-map validate <project>` | Есть | Семантические правила (JSON Schema **engine** — ещё нет, см. [roadmap](07-roadmap.md) инкремент B) |
+| `opc-map validate <project>` | Есть | JSON Schema draft 2020-12 engine + semantic checks |
 | `opc-map doctor <project>` | Есть | Пересечения, дыры, unpolled tags, sparse/gappy блоки |
 | `opc-map migrate-legacy config.json -o out.modbusproj.json` | Есть | Миграция со старого [`config.json`](config.json) |
 | `opc-map gen-nodeset <project> -o out.xml` | План | Генерация фрагмента узлов / dump дерева UA |

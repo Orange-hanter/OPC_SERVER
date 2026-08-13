@@ -26,11 +26,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   CLI `--log-level` / `--log-file` / `--metrics-export` / `--otlp-endpoint`;
   dispatcher `modbus_poll_rtt_ms` histogram
 - Stage 5 tests (`tests/test_historian.cpp`, `tests/test_frame_log.cpp`)
-- Asio reactor (increment A / ADR-0002): standalone Asio 1.32, `AsioReactor`
-  (`io_context` + strand-per-endpoint + `steady_timer`), UA writes `post` to the
-  endpoint strand, reconnect backoff via `reconnectDelayMs`, Bad/NoCommunication
-  on connect failure; `--once` still uses `poll_once` (no reactor loop)
-- Isolation and reconnect tests (`tests/test_asio_reactor.cpp`, runtime cases)
+- Asio increment A (standalone Asio 1.32, strand-per-endpoint, reconnect backoff)
+- Increment B: JSON Schema engine in `opc-map validate`, FC15 coil writes,
+  `ua_sessions` / `tag_quality` metrics, ASan + TSan CI jobs
 - Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
 - Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - `opc-map doctor`: register overlaps, unpolled tags, sparse/gappy poll blocks
@@ -50,8 +48,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Roadmap snapshot (2026-08-13): лабораторный MVP Stages 1–6 зафиксирован; инкремент A
-  (Asio reactor) закрыт в этом релизе; дальше B–D (CI sanitizers, CSV/nodeset, security)
+- Roadmap snapshot (2026-08-13): инкременты A (Asio reactor) и B (CI sanitizers,
+  JSON Schema, FC15, UA metrics) закрыты; дальше C–D (CSV/nodeset, security)
 
 ### Fixed
 

@@ -17,6 +17,8 @@
 ### Jobs
 
 - **Ubuntu 24.04 + g++** (primary): CMake preset `ci`, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
+- **ASan + UBSan**: preset `asan` (GCC), full Catch2 suite.
+- **TSan**: preset `tsan` (GCC) on core/runtime tests; UA client smoke is skipped because open62541 is not TSan-instrumented.
 - **Conan 2**: optional dependency provider job (`OPC_DEPENDENCY_PROVIDER=CONAN`).
 - Clang is supported locally with `-DCMAKE_CXX_FLAGS=-stdlib=libstdc++` when libstdc++ provides `std::expected`; not required in CI until runners ship a complete C++23 STL for Clang.
 - **Studio quality**: npm lockfile install, lint, TypeScript check, Vitest and

@@ -2,12 +2,15 @@
 
 #include "domain/tag_value_util.hpp"
 
+#include <open62541/plugin/accesscontrol.h>
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
 
 #include <charconv>
 #include <chrono>
+#include <mutex>
 #include <sstream>
+#include <unordered_map>
 #include <variant>
 
 namespace opc::adapters {
@@ -31,6 +34,125 @@ void log_msg(ports::ILog* log, ports::LogLevel level, std::string_view msg) {
     using namespace std::chrono;
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
+
+struct SessionHooks {
+    opc::adapters::OpcUaServer* self{nullptr};
+    UA_StatusCode (*orig_activate)(UA_Server*,
+                                   UA_AccessControl*,
+                                   const UA_EndpointDescription*,
+                                   const UA_ByteString*,
+                                   const UA_NodeId*,
+                                   const UA_ExtensionObject*,
+                                   void**){nullptr};
+    void (*orig_close)(UA_Server*, UA_AccessControl*, const UA_NodeId*, void*){nullptr};
+};
+
+std::mutex g_session_hooks_mu;
+std::unordered_map<UA_Server*, SessionHooks> g_session_hooks;
+
+[[nodiscard]] std::uint32_t session_key(const UA_NodeId* id) {
+    if (id == nullptr) {
+        return 0;
+    }
+    if (id->identifierType == UA_NODEIDTYPE_NUMERIC) {
+        return id->identifier.numeric;
+    }
+    return static_cast<std::uint32_t>(id->identifierType) << 24;
+}
+
+UA_StatusCode activate_session_hook(UA_Server* server,
+                                    UA_AccessControl* ac,
+                                    const UA_EndpointDescription* endpoint_description,
+                                    const UA_ByteString* remote_certificate,
+                                    const UA_NodeId* session_id,
+                                    const UA_ExtensionObject* user_identity_token,
+                                    void** session_context) {
+    SessionHooks hooks;
+    {
+        std::lock_guard lock(g_session_hooks_mu);
+        const auto it = g_session_hooks.find(server);
+        if (it != g_session_hooks.end()) {
+            hooks = it->second;
+        }
+    }
+    UA_StatusCode status = UA_STATUSCODE_GOOD;
+    if (hooks.orig_activate != nullptr) {
+        status = hooks.orig_activate(server, ac, endpoint_description, remote_certificate, session_id,
+                                     user_identity_token, session_context);
+    }
+    if (status == UA_STATUSCODE_GOOD && hooks.self != nullptr) {
+        hooks.self->note_session_activate(session_key(session_id));
+    }
+    return status;
+}
+
+void close_session_hook(UA_Server* server,
+                        UA_AccessControl* ac,
+                        const UA_NodeId* session_id,
+                        void* session_context) {
+    SessionHooks hooks;
+    {
+        std::lock_guard lock(g_session_hooks_mu);
+        const auto it = g_session_hooks.find(server);
+        if (it != g_session_hooks.end()) {
+            hooks = it->second;
+        }
+    }
+    if (hooks.orig_close != nullptr) {
+        hooks.orig_close(server, ac, session_id, session_context);
+    }
+    if (hooks.self != nullptr) {
+        hooks.self->note_session_close(session_key(session_id));
+    }
+}
+
+void install_session_hooks(UA_Server* server, opc::adapters::OpcUaServer* self) {
+    UA_ServerConfig* config = UA_Server_getConfig(server);
+    if (config == nullptr) {
+        return;
+    }
+    std::lock_guard lock(g_session_hooks_mu);
+    g_session_hooks[server] = SessionHooks{
+        .self = self,
+        .orig_activate = config->accessControl.activateSession,
+        .orig_close = config->accessControl.closeSession,
+    };
+    config->accessControl.activateSession = &activate_session_hook;
+    config->accessControl.closeSession = &close_session_hook;
+}
+
+void uninstall_session_hooks(UA_Server* server) {
+    std::lock_guard lock(g_session_hooks_mu);
+    g_session_hooks.erase(server);
+}
+
+}  // namespace
+
+void OpcUaServer::note_session_activate(std::uint32_t session_id) {
+    std::size_t count = 0;
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        active_sessions_.insert(session_id);
+        count = active_sessions_.size();
+    }
+    if (metrics_ != nullptr) {
+        metrics_->gauge_set("ua_sessions", static_cast<double>(count));
+    }
+}
+
+void OpcUaServer::note_session_close(std::uint32_t session_id) {
+    std::size_t count = 0;
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        active_sessions_.erase(session_id);
+        count = active_sessions_.size();
+    }
+    if (metrics_ != nullptr) {
+        metrics_->gauge_set("ua_sessions", static_cast<double>(count));
+    }
+}
+
+namespace {
 
 [[nodiscard]] std::uint16_t parse_endpoint_port(std::string_view url, std::uint16_t fallback) {
     const auto colon = url.rfind(':');
@@ -326,7 +448,8 @@ UA_StatusCode data_source_write(UA_Server* /*server*/,
 
 }  // namespace
 
-OpcUaServer::OpcUaServer(ports::ILog* log) : log_(log) {}
+OpcUaServer::OpcUaServer(ports::ILog* log, ports::IMetrics* metrics)
+    : log_(log), metrics_(metrics) {}
 
 OpcUaServer::~OpcUaServer() {
     stop();
@@ -411,6 +534,11 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
         config->serverUrlsSize = 1;
     }
 
+    install_session_hooks(server_, this);
+    if (metrics_ != nullptr) {
+        metrics_->gauge_set("ua_sessions", 0.0);
+    }
+
     const auto& app_name = project_->opcua.application_name.empty() ? project_->name
                                                                     : project_->opcua.application_name;
     UA_LocalizedText_clear(&config->applicationDescription.applicationName);
@@ -425,6 +553,7 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
 
     status = UA_Server_run_startup(server_);
     if (status != UA_STATUSCODE_GOOD) {
+        uninstall_session_hooks(server_);
         UA_Server_delete(server_);
         server_ = nullptr;
         return std::unexpected(domain::Error{domain::ErrorCode::Internal,
@@ -437,6 +566,7 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
                                                                : project_->opcua.namespace_uri.c_str();
     ns_index_ = UA_Server_addNamespace(server_, ns_uri);
     if (auto diagnostics = add_diagnostics(); !diagnostics) {
+        uninstall_session_hooks(server_);
         UA_Server_run_shutdown(server_);
         UA_Server_delete(server_);
         server_ = nullptr;
@@ -460,6 +590,7 @@ void OpcUaServer::stop() {
     if (server_ == nullptr) {
         return;
     }
+    uninstall_session_hooks(server_);
     UA_Server_run_shutdown(server_);
     UA_Server_delete(server_);
     server_ = nullptr;
@@ -475,6 +606,7 @@ void OpcUaServer::stop() {
         bad_count_ = 0;
         last_error_.clear();
         diagnostics_dirty_ = false;
+        active_sessions_.clear();
     }
     diagnostics_state_node_ = 0;
     diagnostics_good_node_ = 0;
@@ -814,40 +946,63 @@ domain::Result<void> OpcUaServer::add_diagnostics() {
 }
 
 void OpcUaServer::note_tag_quality(domain::TagId id, const domain::TagValue& value) {
-    std::lock_guard lock(diagnostics_mutex_);
-    const auto decrement = [this](domain::Quality quality) {
-        switch (quality) {
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        const auto decrement = [this](domain::Quality quality) {
+            switch (quality) {
+            case domain::Quality::Good:
+                --good_count_;
+                break;
+            case domain::Quality::Uncertain:
+                --uncertain_count_;
+                break;
+            case domain::Quality::Bad:
+                --bad_count_;
+                break;
+            }
+        };
+        if (const auto previous = latest_quality_.find(id); previous != latest_quality_.end()) {
+            decrement(previous->second);
+            previous->second = value.quality;
+        } else {
+            latest_quality_.emplace(id, value.quality);
+        }
+        switch (value.quality) {
         case domain::Quality::Good:
-            --good_count_;
+            ++good_count_;
             break;
         case domain::Quality::Uncertain:
-            --uncertain_count_;
+            ++uncertain_count_;
             break;
         case domain::Quality::Bad:
-            --bad_count_;
+            ++bad_count_;
+            last_error_ = "Tag " + std::to_string(id) + ": " +
+                          std::string(quality_reason_name(value.reason));
             break;
         }
-    };
-    if (const auto previous = latest_quality_.find(id); previous != latest_quality_.end()) {
-        decrement(previous->second);
-        previous->second = value.quality;
-    } else {
-        latest_quality_.emplace(id, value.quality);
+        diagnostics_dirty_ = true;
     }
-    switch (value.quality) {
-    case domain::Quality::Good:
-        ++good_count_;
-        break;
-    case domain::Quality::Uncertain:
-        ++uncertain_count_;
-        break;
-    case domain::Quality::Bad:
-        ++bad_count_;
-        last_error_ = "Tag " + std::to_string(id) + ": " +
-                      std::string(quality_reason_name(value.reason));
-        break;
+    publish_quality_metrics();
+}
+
+void OpcUaServer::publish_quality_metrics() {
+    if (metrics_ == nullptr) {
+        return;
     }
-    diagnostics_dirty_ = true;
+    std::uint64_t good = 0;
+    std::uint64_t uncertain = 0;
+    std::uint64_t bad = 0;
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        good = good_count_;
+        uncertain = uncertain_count_;
+        bad = bad_count_;
+    }
+    const auto total = good + uncertain + bad;
+    metrics_->gauge_set("tag_quality.good", static_cast<double>(good));
+    metrics_->gauge_set("tag_quality.uncertain", static_cast<double>(uncertain));
+    metrics_->gauge_set("tag_quality.bad", static_cast<double>(bad));
+    metrics_->gauge_set("tag_quality", total == 0 ? 0.0 : static_cast<double>(good) / static_cast<double>(total));
 }
 
 void OpcUaServer::write_diagnostics() {

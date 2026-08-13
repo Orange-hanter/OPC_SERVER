@@ -49,6 +49,12 @@ public:
 
     virtual domain::Result<void>
     write_single_coil(std::uint8_t unit, std::uint16_t address, bool value) = 0;
+
+    /// FC15. `values` are 0/1 bytes (non-zero = ON). Empty span is an error.
+    virtual domain::Result<void>
+    write_multiple_coils(std::uint8_t unit,
+                         std::uint16_t address,
+                         std::span<const std::uint8_t> values) = 0;
 };
 
 }  // namespace opc::ports

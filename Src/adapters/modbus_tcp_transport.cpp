@@ -327,4 +327,34 @@ ModbusTcpTransport::write_single_coil(std::uint8_t unit, std::uint16_t address, 
     return {};
 }
 
+domain::Result<void>
+ModbusTcpTransport::write_multiple_coils(std::uint8_t unit,
+                                         std::uint16_t address,
+                                         std::span<const std::uint8_t> values) {
+    if (values.empty() || values.size() > 1968) {
+        return std::unexpected(make_err(domain::ErrorCode::InvalidArgument,
+                                        "FC15 quantity out of range",
+                                        false));
+    }
+    const auto quantity = static_cast<std::uint16_t>(values.size());
+    const auto byte_count = static_cast<std::uint8_t>((quantity + 7) / 8);
+    std::vector<std::uint8_t> packed(byte_count, 0);
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (values[i] != 0) {
+            packed[i / 8] = static_cast<std::uint8_t>(packed[i / 8] | (1u << (i % 8)));
+        }
+    }
+    std::vector<std::uint8_t> pdu;
+    pdu.push_back(0x0F);
+    append_u16(pdu, address);
+    append_u16(pdu, quantity);
+    pdu.push_back(byte_count);
+    pdu.insert(pdu.end(), packed.begin(), packed.end());
+    auto resp = transact(unit, pdu);
+    if (!resp) {
+        return std::unexpected(resp.error());
+    }
+    return {};
+}
+
 }  // namespace opc::adapters

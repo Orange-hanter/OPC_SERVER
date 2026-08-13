@@ -142,7 +142,7 @@ bool Application::init(const CliOptions& options) {
 
     std::unique_ptr<ports::IOpcUaFacade> opcua;
     if (options_.enable_opcua) {
-        opcua = std::make_unique<adapters::OpcUaServer>(log_.get());
+        opcua = std::make_unique<adapters::OpcUaServer>(log_.get(), metrics_.get());
     }
 
     auto runtime = ServerRuntime::create(ServerRuntimeDeps{
