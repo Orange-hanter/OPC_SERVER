@@ -65,19 +65,17 @@ Project
 7. **Валидация по JSON Schema** — ошибки до запуска на объекте.
 8. **`opc-map doctor`** — пересечения регистров, дыры в блоках, теги без группы, writable без FC16/FC06 и т.п.
 
-## CLI `opc-map` (спецификация инструмента)
+## CLI `opc-map`
 
-Код инструмента появится по roadmap; контракт команд:
+Коды выхода: `0` — ok, `1` — ошибки валидации/doctor, `2` — ошибка ввода/файла.
 
-| Команда | Поведение |
-|---------|-----------|
-| `opc-map validate <project>` | Проверка JSON Schema + семантических правил |
-| `opc-map doctor <project>` | Диагностика пересечений, производительности блоков, предупреждения |
-| `opc-map gen-nodeset <project> -o out.xml` | Генерация фрагмента узлов / dump дерева UA |
-| `opc-map import-csv <csv> -o fragment.json` | Импорт таблицы регистров |
-| `opc-map migrate-legacy config.json -o out.modbusproj.json` | Миграция со старого [`config.json`](config.json) |
-
-Коды выхода: `0` — ok, `1` — ошибки валидации, `2` — ошибка ввода/файла.
+| Команда | Состояние | Поведение |
+|---------|-----------|-----------|
+| `opc-map validate <project>` | Есть | Семантические правила (JSON Schema **engine** — ещё нет, см. [roadmap](07-roadmap.md) инкремент B) |
+| `opc-map doctor <project>` | Есть | Пересечения, дыры, unpolled tags, sparse/gappy блоки |
+| `opc-map migrate-legacy config.json -o out.modbusproj.json` | Есть | Миграция со старого [`config.json`](config.json) |
+| `opc-map gen-nodeset <project> -o out.xml` | План | Генерация фрагмента узлов / dump дерева UA |
+| `opc-map import-csv <csv> -o fragment.json` | План | Импорт таблицы регистров |
 
 ## Миграция с `DOCs/config.json`
 

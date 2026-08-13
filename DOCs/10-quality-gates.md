@@ -6,10 +6,10 @@
 
 | Gate | Команда / критерий |
 |------|--------------------|
-| Configure | `cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug` |
-| Build | `cmake --build build` |
-| Unit/component tests | `ctest --test-dir build --output-on-failure` — 100% pass |
-| CI | Workflow **CI** green on PR (GCC build+test minimum) |
+| Configure | `cmake --preset dev` (или `cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug`) |
+| Build | `cmake --build --preset dev` |
+| Unit/component tests | `ctest --preset dev` — 100% pass (~40 Catch2 cases + Studio Vitest при затрагивании frontend) |
+| CI | Workflow **CI** green on PR (GCC `ci` preset + Conan; Studio jobs если меняется `frontend/`) |
 | Format | `clang-format -i` на изменённых `*.hpp/*.cpp`; diff format clean |
 | Architecture | Diff не нарушает таблицу зависимостей из [08](08-engineering-standards.md) |
 | ADR | Если меняется граница слоёв / concurrency / ошибки — есть ADR или update существующего |
@@ -22,7 +22,7 @@
 | clang-tidy | Нет новых warnings на изменённых файлах |
 | ASan/UBSan | Debug build + tests под sanitizers — clean |
 | TSan | Тесты TagStore/Dispatcher — clean |
-| Coverage | Не падать ниже порога на `domain`/`core` (порог ввести на этапе 2) |
+| Coverage | Не падать ниже порога на `domain`/`core` (порог ввести вместе с TSan job, инкремент B) |
 
 ## Definition of Done (фича)
 

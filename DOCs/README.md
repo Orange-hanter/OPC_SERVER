@@ -16,7 +16,7 @@
 | [04 — Информационная модель OPC UA](04-opcua-information-model.md) | Адресное пространство, Quality, Subscriptions |
 | [05 — Технологический стек](05-tech-stack.md) | C++26, библиотеки, toolchain |
 | [06 — Диспетчеризация, отладка, трансляция, накопление](06-dispatch-debug-store.md) | Операционные подсистемы |
-| [07 — Roadmap](07-roadmap.md) | Этапы реализации |
+| [07 — Roadmap](07-roadmap.md) | Снимок факта, этапы, следующие инкременты A–D |
 | [08 — Engineering standards](08-engineering-standards.md) | Слои, naming, зависимости, DoD |
 | [09 — Scalability](09-scalability.md) | Изоляция endpoint, рост тегов/клиентов |
 | [10 — Quality gates](10-quality-gates.md) | Ворота merge / CI |

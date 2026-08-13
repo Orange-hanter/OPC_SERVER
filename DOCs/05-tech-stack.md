@@ -57,7 +57,7 @@ UDP — второй этап того же абстрактного transport-�
 | Компонент | Выбор |
 |-----------|--------|
 | JSON | **nlohmann/json** (уже в `Lib/Json`) |
-| Валидация | JSON Schema (draft 2020-12) — библиотека вроде `nlohmann_json_schema_validator` или аналог |
+| Валидация | Сейчас: semantic checks в `project/validate.cpp`. Цель: JSON Schema draft 2020-12 engine (`nlohmann_json_schema_validator` или аналог) — инкремент B |
 | Формат | `*.modbusproj.json` ([схема](schemas/modbus-project.schema.json)) |
 | YAML (опционально) | фронтенд для людей → компиляция в JSON при `opc-map validate` |
 
@@ -66,7 +66,7 @@ UDP — второй этап того же абстрактного transport-�
 | Компонент | Выбор |
 |-----------|--------|
 | Логи | **spdlog** (async logger, уровни, sink в файл/stdout) |
-| Метрики/трассы | **OpenTelemetry** C++ SDK (poll RTT, UA sessions, write queue depth) |
+| Метрики/трассы | **OpenTelemetry** C++ SDK: metrics adapters есть; traces poll/write — после инкремента A |
 
 ## Тестирование
 

@@ -18,7 +18,7 @@ Src/
   ports/           # абстрактные интерфейсы (pure virtual / concepts)
   core/            # Dispatcher, Translator, TagStore, PollScheduler (зависит только от domain+ports)
   project/         # загрузка/валидация/migrate проектов карт
-  adapters/        # (этап 2+) asio modbus, open62541, sqlite historian, spdlog metrics
+  adapters/        # open62541, sqlite historian, spdlog/OTel; Asio reactor — инкремент A
   app/             # composition root: wiring зависимостей
 tools/
   opc-map/         # CLI инженерии (ссылается на project/, не на adapters runtime)

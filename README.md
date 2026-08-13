@@ -17,7 +17,7 @@
 |------|------|
 | Southbound | Modbus TCP (UDP позже) |
 | Core | Dispatcher, Translator, TagStore |
-| Northbound | OPC UA Server (Read; Write/Subscriptions — этапы 4+) |
+| Northbound | OPC UA Server (Read / Write / Subscriptions, security None) |
 | Engineering | Tauri Studio, `opc-map`, схемы и примеры карт |
 
 Норматив: [DOCs/08-engineering-standards.md](DOCs/08-engineering-standards.md), [ADR](DOCs/adr/README.md).
@@ -26,15 +26,13 @@
 
 ## Возможности
 
-**Сейчас:** проекты карт + `opc-map`, TagStore/Translator/Dispatcher, Modbus TCP,
-`ServerRuntime`, **OPC UA Read/Write/Subscriptions**, диагностические узлы и
-кроссплатформенный **OPC Engineering Studio**.
+**Сейчас (лабораторный MVP):** проекты карт + `opc-map` (validate/doctor/migrate-legacy),
+TagStore/Translator/Dispatcher, sync Modbus TCP, `ServerRuntime`, **OPC UA
+Read/Write/Subscriptions** (DataSource, security None), Diagnostics,
+historian/frame-log, spdlog/OTel metrics, **OPC Engineering Studio**.
 
-**Целевые:**
-
-- Опрос Holding/Input/Coils по проектам карт
-- Historian, frame debug, метрики
-- Промышленный security (SignAndEncrypt)
+**Следующее:** Asio reactor вместо `sleep` (инкремент A в [roadmap](DOCs/07-roadmap.md)),
+затем CI sanitizers, `import-csv`/`gen-nodeset`, SignAndEncrypt.
 
 OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
 
@@ -107,7 +105,7 @@ npm run build
 
 ## CI и релизы
 
-- **CI** (push/PR на `master`): сборка GCC+Clang, `ctest`, артефакт Linux x64  
+- **CI** (push/PR на `master`): GCC + `ctest` + Conan 2 + Studio quality/package, артефакт Linux x64 
 - **Релизы**: тег `vMAJOR.MINOR.PATCH` → GitHub Release + tarball + SHA256  
 
 Подробности: [DOCs/11-ci-and-releases.md](DOCs/11-ci-and-releases.md), [CHANGELOG.md](CHANGELOG.md).

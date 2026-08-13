@@ -43,6 +43,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - CI/release strategy documentation (`DOCs/11-ci-and-releases.md`)
 - CMake `install()` rules for `OPC_SERVER` and `opc-map`
 
+### Changed
+
+- Roadmap snapshot (2026-08-13): лабораторный MVP Stages 1–6 зафиксирован; следующий
+  код — Asio reactor (инкремент A), не SignAndEncrypt и не CSV import
+
 ### Fixed
 
 - Write batch tail no longer dropped when a Modbus write fails mid-flush
