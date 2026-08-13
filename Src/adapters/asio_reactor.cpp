@@ -7,6 +7,7 @@
 #include <csignal>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -33,10 +34,7 @@ struct RepeatOp : std::enable_shared_from_this<RepeatOp> {
 
     void start() { arm(std::chrono::milliseconds{0}); }
 
-    void cancel() {
-        asio::error_code ignored;
-        timer.cancel(ignored);
-    }
+    void cancel() { timer.cancel(); }
 
     asio::steady_timer timer;
     Strand* strand{nullptr};
@@ -65,6 +63,8 @@ private:
 };
 
 }  // namespace
+
+using WorkGuard = asio::executor_work_guard<IoContext::executor_type>;
 
 struct AsioReactor::Impl {
     explicit Impl(std::size_t worker_threads)
@@ -96,9 +96,8 @@ struct AsioReactor::Impl {
         if (stopping.exchange(true)) {
             return;
         }
-        asio::error_code ignored;
         if (signals) {
-            signals->cancel(ignored);
+            signals->cancel();
         }
         {
             std::lock_guard lock(mutex);
@@ -109,13 +108,15 @@ struct AsioReactor::Impl {
             }
             repeats.clear();
         }
-        guard.reset();
+        if (guard) {
+            guard->reset();
+        }
         ctx.stop();
     }
 
     std::size_t worker_threads{2};
     IoContext ctx;
-    asio::executor_work_guard<IoContext::executor_type> guard;
+    std::optional<WorkGuard> guard;
     std::mutex mutex;
     std::unordered_map<std::string, std::unique_ptr<Strand>> strands;
     std::vector<std::shared_ptr<RepeatOp>> repeats;
@@ -171,8 +172,8 @@ void AsioReactor::start() {
         return;
     }
     impl_->stopping = false;
-    if (!impl_->guard.owns_work()) {
-        impl_->guard = asio::make_work_guard(impl_->ctx);
+    if (!impl_->guard || !impl_->guard->owns_work()) {
+        impl_->guard.emplace(asio::make_work_guard(impl_->ctx));
     }
     impl_->ctx.restart();
     impl_->threads.clear();
