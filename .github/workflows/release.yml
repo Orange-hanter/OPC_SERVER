@@ -105,7 +105,7 @@ jobs:
             Industrial Modbus → OPC UA gateway binaries (Linux x64).
 
             ### Artifacts
-            - `${{ env.ASSET_NAME }}` — `OPC_SERVER`, `opc-map`, example project map
+            - `${{ env.ASSET_NAME }}` — `OPC_SERVER`, `opc-map`, `opc-monitor`, example project map
             - checksum: `${{ env.ASSET_NAME }}.sha256`
 
             ### Verify

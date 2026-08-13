@@ -18,7 +18,7 @@
 | Southbound | Modbus TCP (UDP позже) |
 | Core | Dispatcher, Translator, TagStore |
 | Northbound | OPC UA Server (Read; Write/Subscriptions — этапы 4+) |
-| Engineering | `opc-map`, схемы и примеры карт |
+| Engineering | Tauri Studio, `opc-map`, схемы и примеры карт |
 
 Норматив: [DOCs/08-engineering-standards.md](DOCs/08-engineering-standards.md), [ADR](DOCs/adr/README.md).
 
@@ -26,7 +26,9 @@
 
 ## Возможности
 
-**Сейчас:** проекты карт + `opc-map`, TagStore/Translator/Dispatcher, Modbus TCP, `ServerRuntime`, **OPC UA Read/Write/Subscriptions** (open62541, security None).
+**Сейчас:** проекты карт + `opc-map`, TagStore/Translator/Dispatcher, Modbus TCP,
+`ServerRuntime`, **OPC UA Read/Write/Subscriptions**, диагностические узлы и
+кроссплатформенный **OPC Engineering Studio**.
 
 **Целевые:**
 
@@ -84,6 +86,24 @@ cmake --install build --component opc-server
 Без C++26 CMake откатывается на **C++23** с предупреждением.
 Режимы ASan/UBSan, unity build, PCH, IPO/CPack и сборка через Conan 2 описаны
 в [практикуме по CMake](DOCs/12-modern-cmake.md).
+
+## Engineering Studio
+
+Studio — локальный редактор `*.modbusproj.json` и read-only клиент удалённого
+OPC UA сервера. UI написан на React/TypeScript и поставляется через Tauri 2 для
+Windows, Linux и macOS. Сетевой мониторинг использует `opc.tcp` через
+`opc-monitor`; HTTP/WebSocket API серверу не требуется.
+
+```bash
+cd frontend/apps/studio
+npm ci
+npm run dev       # browser preview с mock-монитором
+npm test
+npm run build
+```
+
+Инструкции нативной сборки и границы безопасности описаны в
+[frontend/apps/studio/README.md](frontend/apps/studio/README.md).
 
 ## CI и релизы
 

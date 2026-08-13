@@ -46,6 +46,32 @@ function(_opc_fetch_catch2)
   FetchContent_MakeAvailable(Catch2)
 endfunction()
 
+function(_opc_fetch_sqlite)
+  FetchContent_Declare(sqlite3
+    URL https://www.sqlite.org/2024/sqlite-amalgamation-3460100.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+  FetchContent_GetProperties(sqlite3)
+  if(NOT sqlite3_POPULATED)
+    FetchContent_Populate(sqlite3)
+  endif()
+  add_library(opc_sqlite3 STATIC "${sqlite3_SOURCE_DIR}/sqlite3.c")
+  add_library(SQLite::SQLite3 ALIAS opc_sqlite3)
+  target_include_directories(opc_sqlite3 PUBLIC "${sqlite3_SOURCE_DIR}")
+  target_compile_definitions(opc_sqlite3 PUBLIC SQLITE_THREADSAFE=1)
+  find_package(Threads QUIET)
+  if(Threads_FOUND)
+    target_link_libraries(opc_sqlite3 PUBLIC Threads::Threads)
+  endif()
+  if(UNIX)
+    target_link_libraries(opc_sqlite3 PUBLIC ${CMAKE_DL_LIBS} m)
+  endif()
+  set_target_properties(opc_sqlite3 PROPERTIES
+    C_STANDARD 11
+    POSITION_INDEPENDENT_CODE ON
+  )
+endfunction()
+
 function(_opc_fetch_observability)
   set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
   set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -137,7 +163,10 @@ function(opc_setup_dependencies)
     message(FATAL_ERROR "No usable open62541 CMake target was found.")
   endif()
 
-  find_package(SQLite3 REQUIRED)
+  find_package(SQLite3 QUIET)
+  if(NOT SQLite3_FOUND)
+    _opc_fetch_sqlite()
+  endif()
   _opc_fetch_observability()
 
   set(OPC_OPEN62541_TARGET "${_open62541_target}" PARENT_SCOPE)

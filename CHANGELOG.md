@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Tauri 2 Engineering Studio for Windows, Linux and macOS with local project
+  editing, JSON Schema/`opc-map` validation, RU/EN themes and read-only remote
+  OPC UA monitoring (ADR-0016)
+- `opc-monitor` open62541 sidecar with JSON Lines IPC, recursive Browse,
+  Subscriptions, reconnect and bounded desktop event handling
+- Stable `Objects/OPC_SERVER/Diagnostics` nodes for server state, quality
+  counters and the latest runtime error
+- Cross-platform Studio lint/test/package CI matrix
 - Stage 5 Historian/Debug (ADR-0014): `RingHistorian`, `SqliteHistorian`, TagStore
   subscription in `ServerRuntime`, CLI `--historian-db` / `--historian-capacity` /
   `--no-historian` / `--frame-log`

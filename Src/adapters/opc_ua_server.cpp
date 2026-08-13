@@ -115,6 +115,32 @@ void log_msg(ports::ILog* log, ports::LogLevel level, std::string_view msg) {
     return &UA_TYPES[UA_TYPES_FLOAT];
 }
 
+[[nodiscard]] std::string_view quality_reason_name(domain::QualityReason reason) {
+    switch (reason) {
+    case domain::QualityReason::None:
+        return "None";
+    case domain::QualityReason::NoCommunication:
+        return "NoCommunication";
+    case domain::QualityReason::DeviceFailure:
+        return "DeviceFailure";
+    case domain::QualityReason::Timeout:
+        return "Timeout";
+    case domain::QualityReason::ModbusException:
+        return "ModbusException";
+    case domain::QualityReason::DecodingError:
+        return "DecodingError";
+    case domain::QualityReason::Stale:
+        return "Stale";
+    case domain::QualityReason::WritePending:
+        return "WritePending";
+    case domain::QualityReason::WriteRejected:
+        return "WriteRejected";
+    case domain::QualityReason::OutOfRange:
+        return "OutOfRange";
+    }
+    return "Unknown";
+}
+
 [[nodiscard]] bool fill_variant(UA_Variant& out,
                                 project::TagType type,
                                 const domain::ScalarValue& value) {
@@ -410,6 +436,12 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
     const char* ns_uri = project_->opcua.namespace_uri.empty() ? "urn:opc-server:default"
                                                                : project_->opcua.namespace_uri.c_str();
     ns_index_ = UA_Server_addNamespace(server_, ns_uri);
+    if (auto diagnostics = add_diagnostics(); !diagnostics) {
+        UA_Server_run_shutdown(server_);
+        UA_Server_delete(server_);
+        server_ = nullptr;
+        return diagnostics;
+    }
 
     log_msg(log_, ports::LogLevel::Info, "OPC UA listening on " + endpoint_url_);
     return {};
@@ -419,6 +451,10 @@ void OpcUaServer::stop() {
     pump_running_ = false;
     if (pump_thread_.joinable()) {
         pump_thread_.join();
+    }
+    if (store_ != nullptr && store_subscription_ != 0) {
+        store_->unsubscribe(store_subscription_);
+        store_subscription_ = 0;
     }
     store_ = nullptr;
     if (server_ == nullptr) {
@@ -431,6 +467,20 @@ void OpcUaServer::stop() {
     tag_node_ids_.clear();
     tag_types_.clear();
     node_contexts_.clear();
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        latest_quality_.clear();
+        good_count_ = 0;
+        uncertain_count_ = 0;
+        bad_count_ = 0;
+        last_error_.clear();
+        diagnostics_dirty_ = false;
+    }
+    diagnostics_state_node_ = 0;
+    diagnostics_good_node_ = 0;
+    diagnostics_uncertain_node_ = 0;
+    diagnostics_bad_node_ = 0;
+    diagnostics_last_error_node_ = 0;
     log_msg(log_, ports::LogLevel::Info, "OPC UA stopped");
 }
 
@@ -608,6 +658,11 @@ domain::Result<void> OpcUaServer::bind_tags(ports::ITagStore& store,
             domain::ErrorCode::Internal, "OPC UA server not started", "adapters.opcua", false});
     }
 
+    if (store_ != nullptr && store_subscription_ != 0) {
+        store_->unsubscribe(store_subscription_);
+        store_subscription_ = 0;
+    }
+
     store_ = &store;
     for (const auto& spec : tags) {
         if (spec.tag.node_path.empty()) {
@@ -621,6 +676,23 @@ domain::Result<void> OpcUaServer::bind_tags(ports::ITagStore& store,
         const auto parts = split_path(spec.tag.node_path);
         if (auto r = add_variable(spec.id, parts.back(), parent_id, spec.tag); !r) {
             return r;
+        }
+    }
+
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        latest_quality_.clear();
+        good_count_ = 0;
+        uncertain_count_ = 0;
+        bad_count_ = 0;
+        last_error_.clear();
+        diagnostics_dirty_ = true;
+    }
+    store_subscription_ = store.subscribe(
+        [this](domain::TagId id, const domain::TagValue& value) { note_tag_quality(id, value); });
+    for (const auto& spec : tags) {
+        if (auto existing = store.get(spec.id)) {
+            note_tag_quality(spec.id, *existing);
         }
     }
 
@@ -651,6 +723,7 @@ std::optional<std::uint32_t> OpcUaServer::node_numeric_id(domain::TagId id) cons
 
 void OpcUaServer::pump_loop() {
     while (pump_running_ && server_ != nullptr) {
+        write_diagnostics();
         UA_Server_run_iterate(server_, true);
     }
 }
@@ -659,9 +732,167 @@ void OpcUaServer::iterate() {
     if (pump_thread_.joinable()) {
         return;
     }
+    write_diagnostics();
     if (server_ != nullptr) {
         UA_Server_run_iterate(server_, true);
     }
+}
+
+domain::Result<void> OpcUaServer::add_diagnostics() {
+    std::uint32_t parent_id = 0;
+    if (auto path = ensure_path("OPC_SERVER/Diagnostics/State", parent_id); !path) {
+        return path;
+    }
+
+    const auto add = [&](const char* name,
+                         const UA_DataType* type,
+                         const void* initial_value,
+                         std::uint32_t& node_id) -> domain::Result<void> {
+        UA_VariableAttributes attr = UA_VariableAttributes_default;
+        attr.displayName = UA_LOCALIZEDTEXT_ALLOC("en-US", name);
+        attr.description = UA_LOCALIZEDTEXT_ALLOC("en-US", name);
+        attr.dataType = type->typeId;
+        attr.valueRank = UA_VALUERANK_SCALAR;
+        attr.accessLevel = UA_ACCESSLEVELMASK_READ;
+        if (UA_Variant_setScalarCopy(&attr.value, initial_value, type) != UA_STATUSCODE_GOOD) {
+            UA_VariableAttributes_clear(&attr);
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::Internal, "failed to initialize diagnostic " + std::string(name),
+                "adapters.opcua", false});
+        }
+
+        const auto numeric_id = next_numeric_id_++;
+        UA_NodeId requested = UA_NODEID_NUMERIC(ns_index_, numeric_id);
+        UA_NodeId parent = UA_NODEID_NUMERIC(ns_index_, parent_id);
+        UA_NodeId reference = UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT);
+        UA_QualifiedName browse = UA_QUALIFIEDNAME_ALLOC(ns_index_, name);
+        UA_NodeId type_def = UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE);
+        UA_NodeId out;
+        UA_NodeId_init(&out);
+        const auto status = UA_Server_addVariableNode(server_, requested, parent, reference, browse,
+                                                      type_def, attr, nullptr, &out);
+        UA_VariableAttributes_clear(&attr);
+        UA_QualifiedName_clear(&browse);
+        if (status != UA_STATUSCODE_GOOD) {
+            UA_NodeId_clear(&out);
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::Internal, "failed to add diagnostic " + std::string(name),
+                "adapters.opcua", false});
+        }
+        node_id = out.identifier.numeric;
+        UA_NodeId_clear(&out);
+        return {};
+    };
+
+    UA_String running = UA_STRING_ALLOC("Running");
+    UA_String empty = UA_STRING_ALLOC("");
+    UA_UInt64 zero = 0;
+    auto result = add("State", &UA_TYPES[UA_TYPES_STRING], &running, diagnostics_state_node_);
+    UA_String_clear(&running);
+    if (!result) {
+        UA_String_clear(&empty);
+        return result;
+    }
+    result = add("GoodCount", &UA_TYPES[UA_TYPES_UINT64], &zero, diagnostics_good_node_);
+    if (!result) {
+        UA_String_clear(&empty);
+        return result;
+    }
+    result = add("UncertainCount", &UA_TYPES[UA_TYPES_UINT64], &zero, diagnostics_uncertain_node_);
+    if (!result) {
+        UA_String_clear(&empty);
+        return result;
+    }
+    result = add("BadCount", &UA_TYPES[UA_TYPES_UINT64], &zero, diagnostics_bad_node_);
+    if (!result) {
+        UA_String_clear(&empty);
+        return result;
+    }
+    result = add("LastError", &UA_TYPES[UA_TYPES_STRING], &empty, diagnostics_last_error_node_);
+    UA_String_clear(&empty);
+    return result;
+}
+
+void OpcUaServer::note_tag_quality(domain::TagId id, const domain::TagValue& value) {
+    std::lock_guard lock(diagnostics_mutex_);
+    const auto decrement = [this](domain::Quality quality) {
+        switch (quality) {
+        case domain::Quality::Good:
+            --good_count_;
+            break;
+        case domain::Quality::Uncertain:
+            --uncertain_count_;
+            break;
+        case domain::Quality::Bad:
+            --bad_count_;
+            break;
+        }
+    };
+    if (const auto previous = latest_quality_.find(id); previous != latest_quality_.end()) {
+        decrement(previous->second);
+        previous->second = value.quality;
+    } else {
+        latest_quality_.emplace(id, value.quality);
+    }
+    switch (value.quality) {
+    case domain::Quality::Good:
+        ++good_count_;
+        break;
+    case domain::Quality::Uncertain:
+        ++uncertain_count_;
+        break;
+    case domain::Quality::Bad:
+        ++bad_count_;
+        last_error_ = "Tag " + std::to_string(id) + ": " +
+                      std::string(quality_reason_name(value.reason));
+        break;
+    }
+    diagnostics_dirty_ = true;
+}
+
+void OpcUaServer::write_diagnostics() {
+    if (server_ == nullptr) {
+        return;
+    }
+    std::uint64_t good = 0;
+    std::uint64_t uncertain = 0;
+    std::uint64_t bad = 0;
+    std::string last_error;
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        if (!diagnostics_dirty_) {
+            return;
+        }
+        good = good_count_;
+        uncertain = uncertain_count_;
+        bad = bad_count_;
+        last_error = last_error_;
+        diagnostics_dirty_ = false;
+    }
+
+    const auto write_scalar = [this](std::uint32_t node_id,
+                                     const void* value,
+                                     const UA_DataType* type) {
+        UA_Variant variant;
+        UA_Variant_init(&variant);
+        if (UA_Variant_setScalarCopy(&variant, value, type) == UA_STATUSCODE_GOOD) {
+            const auto node = UA_NODEID_NUMERIC(ns_index_, node_id);
+            if (UA_Server_writeValue(server_, node, variant) != UA_STATUSCODE_GOOD) {
+                log_msg(log_, ports::LogLevel::Warn, "failed to update OPC UA diagnostics");
+            }
+        }
+        UA_Variant_clear(&variant);
+    };
+
+    const UA_UInt64 good_value = good;
+    const UA_UInt64 uncertain_value = uncertain;
+    const UA_UInt64 bad_value = bad;
+    UA_String error_value = UA_STRING_ALLOC(last_error.c_str());
+    write_scalar(diagnostics_good_node_, &good_value, &UA_TYPES[UA_TYPES_UINT64]);
+    write_scalar(diagnostics_uncertain_node_, &uncertain_value, &UA_TYPES[UA_TYPES_UINT64]);
+    write_scalar(diagnostics_bad_node_, &bad_value, &UA_TYPES[UA_TYPES_UINT64]);
+    write_scalar(diagnostics_last_error_node_, &error_value, &UA_TYPES[UA_TYPES_STRING]);
+    UA_String_clear(&error_value);
 }
 
 std::uint32_t OpcUaServer::quality_to_status(domain::Quality quality, domain::QualityReason reason) {

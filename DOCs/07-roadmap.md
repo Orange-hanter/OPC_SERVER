@@ -51,7 +51,7 @@
 
 ### Этап 4 — Subscriptions и Write
 
-- [x] MonitoredItems / Publish (DataSource sampling + TagStore)
+- [x] MonitoredItems / Publish (DataSource sampling + TagStore) для Studio/SCADA
 - [x] Write path → Dispatcher queue → FC06/16/05 (`OpcUaServer` DataSource write)
 - [x] Политика `writes_first`, маппинг StatusCode / WritePending
 - [x] Smoke-тесты UA Write + Subscription (`tests/test_opc_ua_write_subs.cpp`)
@@ -75,7 +75,8 @@
 
 - [x] `opc-map doctor` (static overlaps, holes, unpolled tags, sparse blocks)
 - [ ] `import-csv`, `gen-nodeset`
-- TUI или лёгкий UI редактора проектов (после стабилизации формата)
+- [x] Tauri Engineering Studio: локальный редактор проектов + удалённый
+  read-only OPC UA мониторинг (Windows/Linux/macOS)
 - Профили устройств и библиотека шаблонов
 
 ### Этап 7 — Промышленное укрепление
