@@ -72,6 +72,31 @@ function(_opc_fetch_sqlite)
   )
 endfunction()
 
+function(_opc_fetch_asio)
+  FetchContent_Declare(asio
+    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+    GIT_TAG asio-1-32-0
+    GIT_SHALLOW TRUE
+    SYSTEM
+    EXCLUDE_FROM_ALL
+  )
+  FetchContent_GetProperties(asio)
+  if(NOT asio_POPULATED)
+    FetchContent_Populate(asio)
+  endif()
+  add_library(opc_asio INTERFACE)
+  add_library(opc::asio ALIAS opc_asio)
+  target_include_directories(opc_asio SYSTEM INTERFACE
+    "${asio_SOURCE_DIR}/asio/include"
+  )
+  target_compile_definitions(opc_asio INTERFACE
+    ASIO_STANDALONE
+    ASIO_NO_DEPRECATED
+  )
+  find_package(Threads REQUIRED)
+  target_link_libraries(opc_asio INTERFACE Threads::Threads)
+endfunction()
+
 function(_opc_fetch_observability)
   set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
   set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -167,6 +192,7 @@ function(opc_setup_dependencies)
   if(NOT SQLite3_FOUND)
     _opc_fetch_sqlite()
   endif()
+  _opc_fetch_asio()
   _opc_fetch_observability()
 
   set(OPC_OPEN62541_TARGET "${_open62541_target}" PARENT_SCOPE)

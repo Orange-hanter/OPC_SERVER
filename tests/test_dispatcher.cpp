@@ -141,3 +141,40 @@ TEST_CASE("Dispatcher Bad write keeps prior value; QueueFull is returned", "[cor
     REQUIRE_FALSE(overflow.has_value());
     CHECK(overflow.error().code == opc::domain::ErrorCode::QueueFull);
 }
+
+TEST_CASE("Dispatcher marks every endpoint tag Bad when connect fails", "[core][dispatcher]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    FakeModbusTransport transport;
+    transport.set_connect_result(std::unexpected(opc::domain::Error{
+        opc::domain::ErrorCode::Connection, "refused", "fake.modbus", true}));
+
+    auto level = index.find_by_name("Level");
+    auto sp = index.find_by_name("Setpoint");
+    REQUIRE(level);
+    REQUIRE(sp);
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+    });
+    dispatcher.bind_transport("ep1", &transport);
+
+    auto poll = dispatcher.poll_due("ep1", 1'000);
+    REQUIRE_FALSE(poll.has_value());
+    CHECK(poll.error().code == opc::domain::ErrorCode::Connection);
+
+    auto level_v = store.get(level->id);
+    auto sp_v = store.get(sp->id);
+    REQUIRE(level_v);
+    REQUIRE(sp_v);
+    CHECK(level_v->quality == opc::domain::Quality::Bad);
+    CHECK(level_v->reason == opc::domain::QualityReason::NoCommunication);
+    CHECK(sp_v->quality == opc::domain::Quality::Bad);
+    CHECK(sp_v->reason == opc::domain::QualityReason::NoCommunication);
+}

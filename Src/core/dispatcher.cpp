@@ -222,6 +222,7 @@ domain::Result<void> Dispatcher::poll_due(std::string_view endpoint_id, domain::
         }
         auto conn = transport.connect({ep->host, ep->port});
         if (!conn) {
+            mark_endpoint_bad(endpoint_id, domain::QualityReason::NoCommunication, now);
             return std::unexpected(conn.error());
         }
     }
@@ -344,6 +345,17 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
                         domain::QualityReason::None, now, pending.value);
     }
     return {};
+}
+
+void Dispatcher::mark_endpoint_bad(std::string_view endpoint_id,
+                                   domain::QualityReason reason,
+                                   domain::TimestampMs now) {
+    for (const auto& binding : deps_.index.tags()) {
+        if (binding.endpoint_id != endpoint_id) {
+            continue;
+        }
+        publish_quality(deps_.tag_store, binding.id, domain::Quality::Bad, reason, now);
+    }
 }
 
 }  // namespace opc::core

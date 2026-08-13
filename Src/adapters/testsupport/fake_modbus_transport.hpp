@@ -2,6 +2,9 @@
 
 #include "ports/i_modbus_transport.hpp"
 
+#include <chrono>
+#include <optional>
+#include <thread>
 #include <unordered_map>
 
 namespace opc::adapters::testsupport {
@@ -10,6 +13,14 @@ namespace opc::adapters::testsupport {
 class FakeModbusTransport final : public ports::IModbusTransport {
 public:
     domain::Result<void> connect(const ports::EndpointAddress&) override {
+        ++connect_attempts_;
+        if (connect_result_.has_value()) {
+            auto result = *connect_result_;
+            if (result) {
+                connected_ = true;
+            }
+            return result;
+        }
         connected_ = true;
         return {};
     }
@@ -24,6 +35,7 @@ public:
             return std::unexpected(domain::Error{
                 domain::ErrorCode::Connection, "not connected", "fake.modbus", true});
         }
+        maybe_delay();
         std::vector<std::uint16_t> out(quantity, 0);
         for (std::uint16_t i = 0; i < quantity; ++i) {
             const auto it = holding_.find(static_cast<std::uint16_t>(address + i));
@@ -72,8 +84,21 @@ public:
 
     void set_holding(std::uint16_t address, std::uint16_t value) { holding_[address] = value; }
 
+    void set_read_delay(std::chrono::milliseconds delay) { read_delay_ = delay; }
+    void set_connect_result(domain::Result<void> result) { connect_result_ = std::move(result); }
+    [[nodiscard]] int connect_attempts() const { return connect_attempts_; }
+
 private:
+    void maybe_delay() const {
+        if (read_delay_.count() > 0) {
+            std::this_thread::sleep_for(read_delay_);
+        }
+    }
+
     bool connected_{false};
+    std::chrono::milliseconds read_delay_{0};
+    std::optional<domain::Result<void>> connect_result_;
+    int connect_attempts_{0};
     std::unordered_map<std::uint16_t, std::uint16_t> holding_;
 };
 

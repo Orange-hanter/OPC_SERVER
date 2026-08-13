@@ -6,6 +6,7 @@ add_executable(opc_tests
   test_translator.cpp
   test_dispatcher.cpp
   test_server_runtime.cpp
+  test_asio_reactor.cpp
   test_opc_ua_read.cpp
   test_opc_ua_write_subs.cpp
   test_historian.cpp

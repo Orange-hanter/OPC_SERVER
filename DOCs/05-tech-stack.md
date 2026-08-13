@@ -29,7 +29,7 @@
 
 | Компонент | Выбор |
 |-----------|--------|
-| Async I/O | **Boost.Asio** или standalone **Asio** |
+| Async I/O | standalone **Asio** 1.32 (`FetchContent`, `opc::asio`; hexagon: только `adapters/`) |
 | Модель | один или несколько `io_context`, strand на endpoint |
 
 Почему Asio: зрелый async TCP, таймеры для периодов опроса, переносимость Linux/Windows.
@@ -47,7 +47,7 @@
 
 | Компонент | Выбор |
 |-----------|--------|
-| Клиент | **Asio-native Modbus TCP client** (предпочтительно) **или** libmodbus за адаптером |
+| Клиент | Sync POSIX **Modbus TCP** за `IModbusTransport`, вызывается **только** со strand endpoint (инкремент A). Asio-native async TCP — позже |
 | Legacy | submodule `Lib/modbuspp` — **не ядро**; кандидат на удаление/замену |
 
 UDP — второй этап того же абстрактного transport-интерфейса.

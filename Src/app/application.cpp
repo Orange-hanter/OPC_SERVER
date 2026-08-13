@@ -10,9 +10,9 @@
 #include "app/version.hpp"
 #include "ports/i_log.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
-#include <thread>
 
 namespace opc::app {
 namespace {
@@ -193,11 +193,23 @@ int Application::run() {
         return 0;
     }
 
-    log_->info("app", "entering poll loop (Ctrl+C to stop)");
-    while (true) {
-        poll_and_watch(clock_->now_ms());
-        std::this_thread::sleep_for(std::chrono::milliseconds(options_.watch_period_ms));
+    log_->info("app", "entering asio reactor (Ctrl+C to stop)");
+    ReactorOptions reactor_opts;
+    if (options_.watch) {
+        reactor_opts.watch_period = std::chrono::milliseconds{std::max(1, options_.watch_period_ms)};
+        reactor_opts.watch_out = &std::cout;
     }
+    if (auto s = runtime_->start_reactor(reactor_opts); !s) {
+        log_->error("app", "reactor start failed: " + s.error().message);
+        runtime_->stop();
+        return 1;
+    }
+    runtime_->run_until_stop();
+    runtime_->stop();
+    if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
+        otel->force_flush();
+    }
+    return 0;
 }
 
 }  // namespace opc::app

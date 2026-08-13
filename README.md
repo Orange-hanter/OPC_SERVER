@@ -26,20 +26,20 @@
 
 ## Возможности
 
-**Сейчас (лабораторный MVP):** проекты карт + `opc-map` (validate/doctor/migrate-legacy),
-TagStore/Translator/Dispatcher, sync Modbus TCP, `ServerRuntime`, **OPC UA
-Read/Write/Subscriptions** (DataSource, security None), Diagnostics,
-historian/frame-log, spdlog/OTel metrics, **OPC Engineering Studio**.
+**Сейчас (лабораторный MVP + reactor):** проекты карт + `opc-map` (validate/doctor/migrate-legacy),
+TagStore/Translator/Dispatcher, sync Modbus TCP за Asio strand-per-endpoint,
+`ServerRuntime`, **OPC UA Read/Write/Subscriptions** (DataSource, security None),
+Diagnostics, historian/frame-log, spdlog/OTel metrics, **OPC Engineering Studio**.
 
-**Следующее:** Asio reactor вместо `sleep` (инкремент A в [roadmap](DOCs/07-roadmap.md)),
-затем CI sanitizers, `import-csv`/`gen-nodeset`, SignAndEncrypt.
+**Следующее:** TSan/ASan в CI, JSON Schema engine, `import-csv`/`gen-nodeset`,
+SignAndEncrypt (инкременты B–D в [roadmap](DOCs/07-roadmap.md)).
 
 OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
 
 ## Стек
 
 - **C++26** (fallback C++23), CMake 3.28, Ninja, CMake Presets
-- open62541 (Conan 2 или FetchContent), nlohmann/json; Asio reactor — следующий инкремент
+- open62541 (Conan 2 или FetchContent), nlohmann/json, standalone Asio 1.32 (FetchContent)
   Подробнее: [DOCs/05-tech-stack.md](DOCs/05-tech-stack.md)
 
 ## Документация

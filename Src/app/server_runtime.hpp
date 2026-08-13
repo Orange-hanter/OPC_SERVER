@@ -13,12 +13,18 @@
 #include "ports/i_opc_ua_facade.hpp"
 #include "project/types.hpp"
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+
+namespace opc::adapters {
+class AsioReactor;
+}
 
 namespace opc::app {
 
@@ -35,6 +41,11 @@ struct ServerRuntimeDeps {
     TransportFactory transport_factory;
     /// Optional northbound OPC UA facade (owned by caller or moved in).
     std::unique_ptr<ports::IOpcUaFacade> opcua;
+};
+
+struct ReactorOptions {
+    std::chrono::milliseconds watch_period{0};
+    std::ostream* watch_out{nullptr};
 };
 
 /// Composition root for southbound+core runtime (ADR-0001).
@@ -60,6 +71,11 @@ public:
 
     domain::Result<void> start();
     domain::Result<void> poll_once(domain::TimestampMs now);
+    /// Start Asio workers and per-endpoint poll timers. `--once` must not call this.
+    domain::Result<void> start_reactor(ReactorOptions options = {});
+    /// Block until SIGINT/SIGTERM or `stop()`. Requires `start_reactor()`.
+    void run_until_stop();
+    [[nodiscard]] bool reactor_running() const;
     void write_watchlist(std::ostream& out) const;
     void stop();
 
@@ -78,8 +94,15 @@ private:
     TransportFactory transport_factory_;
     std::unordered_map<std::string, std::unique_ptr<ports::IModbusTransport>> transports_;
     std::unique_ptr<ports::IOpcUaFacade> opcua_;
+    std::unique_ptr<adapters::AsioReactor> reactor_;
+    std::unordered_map<std::string, domain::TimestampMs> next_reconnect_ms_;
     std::optional<std::uint64_t> historian_sub_;
     bool started_{false};
+
+    void tick_endpoint(const std::string& endpoint_id);
+    void install_write_handler();
+    [[nodiscard]] std::size_t choose_worker_count() const;
+    [[nodiscard]] int min_group_period_ms(std::string_view endpoint_id) const;
 };
 
 [[nodiscard]] std::optional<std::string> resolve_project_path(const std::string& explicit_path);

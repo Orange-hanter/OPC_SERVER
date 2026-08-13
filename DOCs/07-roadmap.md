@@ -2,13 +2,14 @@
 
 Документация в `DOCs/` задаёт целевое состояние. Ниже — **снимок факта** (что уже в `master`) и **порядок следующих инкрементов**. Исторический backlog опроса IoT/Modbus сохранён в [tasks.md](tasks.md) и покрывается этапами 1–2.
 
-Снимок: **2026-08-13**, `master` после PR #6 (CMake/Conan) и #8 (Engineering Studio). Открытых PR нет.
+Снимок: **2026-08-13**, `master` после PR #6 (CMake/Conan) и #8 (Engineering Studio).
+Инкремент A (Asio reactor) — в этой ветке.
 
 ## Где мы сейчас
 
-Лабораторный контур **Modbus TCP → TagStore → OPC UA (Read/Write/Subscriptions)** работает end-to-end. Рядом: historian/frame-log, spdlog/OTel metrics, `opc-map` + doctor, Tauri Studio (read-only monitor).
+Лабораторный контур **Modbus TCP → TagStore → OPC UA (Read/Write/Subscriptions)** работает end-to-end. Рядом: historian/frame-log, spdlog/OTel metrics, `opc-map` + doctor, Tauri Studio (read-only monitor). **Asio reactor** (strand-per-endpoint, `steady_timer`, reconnect backoff) закрывает anti-DoD `sleep` из [ADR-0002](adr/0002-concurrency-model.md).
 
-Это **не** промышленный runtime: цикл опроса крутится через `sleep` в `Application::run()`, Asio strand-per-endpoint из [ADR-0002](adr/0002-concurrency-model.md) ещё не внедрён, security OPC UA — None, OTLP/traces — opt-in/будущее.
+Это **ещё не** промышленный runtime: transport на strand остаётся блокирующим POSIX TCP, security OPC UA — None, OTLP/traces — opt-in/будущее.
 
 | Контур | Состояние |
 |--------|-----------|
@@ -24,8 +25,9 @@
 | Modular CMake presets + Conan 2 + CI artifacts | Есть |
 | Engineering Studio (Tauri 2) + `opc-monitor` | Есть |
 | JSON Schema **engine** (draft 2020-12) | Нет — semantic checks |
-| Asio reactor / `steady_timer` вместо `sleep` | Нет — **следующий инкремент** |
-| TSan CI, reconnect backoff, `mark_stale` в runtime | Нет |
+| Asio reactor / `steady_timer` вместо `sleep` | Есть — инкремент A |
+| Reconnect backoff + Bad/NoCommunication на endpoint | Есть (per-endpoint `mark_endpoint_bad`, не глобальный `mark_stale_before`) |
+| TSan CI | Нет |
 | `import-csv` / `gen-nodeset` / профили устройств | Нет |
 | Sign / SignAndEncrypt | Нет |
 
@@ -57,11 +59,11 @@
 ### Этап 2 — ModbusPoller + Translator (по ADR)
 
 - [x] Реализация `Translator::decode/encode` + тесты byte order
-- [x] `ModbusTcpTransport` (sync TCP/MBAP за `IModbusTransport`; Asio reactor — следующий инкремент)
+- [x] `ModbusTcpTransport` (sync TCP/MBAP за `IModbusTransport`; вызов только со strand)
 - [x] `Dispatcher::poll_due` + write queue (`writes_first`) + Fake component tests
 - [x] `RuntimeIndex` (TagId ↔ project tags)
 - [x] Watchlist в консоли / app composition root
-- [ ] Полный reactor (Asio `io_context` + strand per endpoint + timers) — см. инкремент A
+- [x] Полный reactor (Asio `io_context` + strand per endpoint + timers) — инкремент A
 - [ ] FC15 (`write_multiple_coils`) — порт сейчас только `write_single_coil`
 
 ### Этап 2.5 — Runtime infrastructure
@@ -70,9 +72,10 @@
 - [x] `Application` CLI (`--project`, `--once`, `--watch`, `--version`, historian/log/metrics)
 - [x] `ILog` (`SpdlogLog` / `StderrLog`), `ManualClock`, `IMetrics`
 - [x] Bootstrap tests with Fake transport
-- [ ] Asio reactor loop (убрать `sleep_for` в `Application::run`) — инкремент A
-- [ ] Честный reconnect backoff (`reconnectDelayMs` загружается, но не выдерживается)
-- [ ] Runtime `TagStore::mark_stale_before` при обрыве связи (API есть, в poll loop не вызван)
+- [x] Asio reactor loop (убрать `sleep_for` в `Application::run`) — инкремент A
+- [x] Честный reconnect backoff (`reconnectDelayMs` на strand; `--once` без backoff-skip)
+- [x] Runtime Bad/NoCommunication при обрыве (`Dispatcher::mark_endpoint_bad` на endpoint;
+      глобальный `TagStore::mark_stale_before` намеренно не зовётся, чтобы не портить соседние endpoints)
 
 ### Этап 3 — OPC UA Read
 
@@ -93,7 +96,7 @@
 - [x] ADR-0013: DataSource, facade без `dynamic_cast`, preserve value, write-queue bounds
 - [x] `cmake --install` + `OPC_SERVER --version`
 - [x] Modular CMake + Conan 2 + presets (`dev` / `ci` / `asan` / `unity`)
-- [ ] Asio reactor / убрать sleep (перенос из 2.5) — инкремент A
+- [x] Asio reactor / убрать sleep (перенос из 2.5) — инкремент A
 - [ ] TSan CI job
 - [ ] ASan/UBSan job в GitHub Actions (preset `asan` уже есть)
 
@@ -128,26 +131,26 @@
 
 Не оценивать календарём. Один инкремент = одна вертикаль с тестами и обновлением этого файла.
 
-### A — Asio reactor (обязательный следующий код)
+### A — Asio reactor (закрыт)
 
-**Зачем:** ADR-0002 и anti-DoD в [10](10-quality-gates.md) запрещают `sleep` в production-пути. Сейчас `Application::run()` спит `watch_period_ms`, а `ModbusTcpTransport` — блокирующий POSIX TCP. Один медленный slave блокирует остальные endpoints.
+**Зачем:** ADR-0002 и anti-DoD в [10](10-quality-gates.md) запрещают `sleep` в production-пути.
 
-**Состав:**
+**Состав (сделано):**
 
-1. Asio только в `adapters/` (hexagon: `core`/`ports` без Asio).
-2. `io_context` + worker threads; **strand на каждый Modbus endpoint**.
-3. `steady_timer` по `pollGroups[].periodMs` вместо внешнего sleep.
-4. Write с UA-thread: `post` на strand endpoint, не синхронный `flush_writes` из callback.
-5. Reconnect state machine с `reconnectDelayMs` на том же strand.
-6. Вызов `mark_stale_before` / Bad NoCommunication при обрыве, чтобы UA Diagnostics и SCADA видели потерю связи.
+1. Asio только в `adapters/` (`AsioReactor` pimpl, headers без `<asio.hpp>`).
+2. `io_context` + worker threads (≥2); **strand на каждый Modbus endpoint**.
+3. `steady_timer` по min `pollGroups[].periodMs` endpoint; `--period-ms` — интервал watchlist.
+4. Write с UA-thread: `enqueue_write` + `post` flush на strand; `--once` по-прежнему `poll_once`.
+5. Reconnect backoff: skip `poll_due`, пока `now < next_reconnect` (`reconnectDelayMs`).
+6. `mark_endpoint_bad` (Bad/NoCommunication) при connect fail / disconnect; не глобальный `mark_stale_before`.
 
-**DoD:** `--once` без reactor-loop по-прежнему работает; `--watch` без `sleep_for`; тесты Dispatcher на Fake не ломаются; новый component-тест на два endpoint (медленный не стопает быстрый) либо эквивалент под fake clock; ASan чистый на затронутых тестах.
+**DoD:** `--once` без reactor-loop; `--watch` без `sleep_for`; Dispatcher Fake tests; isolation test двух endpoints; reconnect backoff test.
 
-**Не делать в этом инкременте:** SignAndEncrypt, CSV import, OTLP default-on.
+**Не делалось в A:** SignAndEncrypt, CSV import, OTLP default-on, async Modbus TCP.
 
 ### B — Качество CI и completeness poller
 
-После A, можно параллелить:
+Следующий код после A, можно параллелить:
 
 - TSan job (TagStore / Dispatcher / write queue).
 - ASan preset в CI (не только локально).
@@ -180,19 +183,23 @@
 3. Запись уставки из UA доходит до регистра и подтверждается quality Good.
 4. Quality Bad/Uncertain выставляется на ошибках poll/write (полный stale-on-disconnect — инкремент A).
 
-### Следующий milestone: reactor MVP (инкремент A)
+### Milestone: reactor MVP (инкремент A) — выполнен
 
 1. Нет `sleep` в `Application::run` / runtime-пути.
-2. Изоляция endpoint: I/O одного устройства не блокирует strand другого.
-3. UA Write не вызывает transport с потока open62541.
-4. Обрыв связи → теги endpoint уходят в Bad/Uncertain предсказуемо.
+2. Изоляция endpoint: I/O одного устройства не блокирует strand другого (≥2 worker threads).
+3. UA Write не вызывает transport с потока open62541 (`post` на strand).
+4. Обрыв связи → теги **этого** endpoint уходят в Bad/NoCommunication.
+
+### Следующий milestone: инкремент B
+
+TSan/ASan в CI, JSON Schema engine, FC15, метрики `ua_sessions` / `tag_quality`.
 
 ## Связь с текущим репозиторием
 
 | Сейчас | Следующая цель |
 |--------|----------------|
-| `sleep` + sync TCP в `Application` / `ModbusTcpTransport` | Asio `io_context` + strand-per-endpoint (инкремент A) |
-| `reconnectDelayMs` в JSON, retry каждый poll | backoff state machine |
+| Asio `io_context` + strand-per-endpoint; sync TCP на strand | Asio-native async Modbus TCP (по желанию); TSan |
+| `reconnectDelayMs` backoff на strand | — |
 | `opc-map` validate/doctor/migrate | import-csv / gen-nodeset |
 | Studio + opc-monitor, security None | SignAndEncrypt + cert profile |
 | OTel metrics, OTLP opt-in | traces poll/write; OTLP в CI по флагу |

@@ -43,6 +43,11 @@ public:
     /// Drain write queue for endpoint (call on endpoint strand before/with poll).
     domain::Result<void> flush_writes(std::string_view endpoint_id);
 
+    /// Publish Bad/NoCommunication for every tag on the endpoint (disconnect / connect fail).
+    void mark_endpoint_bad(std::string_view endpoint_id,
+                           domain::QualityReason reason,
+                           domain::TimestampMs now);
+
 private:
     domain::Result<void> poll_group(const project::PollGroup& group,
                                     ports::IModbusTransport& transport,

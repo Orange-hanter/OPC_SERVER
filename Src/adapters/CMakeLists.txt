@@ -1,4 +1,5 @@
 add_library(opc_adapters
+  asio_reactor.cpp
   modbus_tcp_transport.cpp
   opc_ua_server.cpp
   ring_historian.cpp
@@ -21,6 +22,7 @@ target_link_libraries(opc_adapters
     opentelemetry_resources
     opentelemetry_common
   PRIVATE
+    opc::asio
     "${OPC_OPEN62541_TARGET}"
 )
 if(OPC_WITH_OTLP)
