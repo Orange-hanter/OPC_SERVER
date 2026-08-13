@@ -39,6 +39,8 @@ ctest --preset dev
 
 ```bash
 cmake --workflow --preset asan  # AddressSanitizer + UndefinedBehaviorSanitizer
+cmake --workflow --preset tsan  # ThreadSanitizer (TagStore / Dispatcher)
+cmake --preset coverage && cmake --build --preset coverage && ./scripts/coverage.sh
 cmake --preset unity            # unity build и precompiled headers
 cmake --build --preset unity
 ctest --preset unity
@@ -59,6 +61,9 @@ clangd, clang-tidy и многие IDE.
 | `OPC_ENABLE_WARNINGS` | `ON` | строгий переносимый набор warnings |
 | `OPC_WARNINGS_AS_ERRORS` | `OFF` | добавить `-Werror` / `/WX` только своим целям |
 | `OPC_ENABLE_SANITIZERS` | `OFF` | ASan + UBSan для GCC/Clang |
+| `OPC_ENABLE_TSAN` | `OFF` | ThreadSanitizer (несовместим с ASan) |
+| `OPC_ENABLE_COVERAGE` | `OFF` | `--coverage` для `scripts/coverage.sh` |
+| `OPC_ENABLE_FUZZERS` | `OFF` | libFuzzer-таргеты (Clang) |
 | `OPC_ENABLE_IPO` | `OFF` | IPO/LTO после `check_ipo_supported()` |
 | `OPC_ENABLE_UNITY_BUILD` | `OFF` | объединять `.cpp` своих целей |
 | `OPC_ENABLE_PCH` | `OFF` | использовать `target_precompile_headers()` |

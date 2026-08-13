@@ -135,14 +135,14 @@ ModbusTcpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pd
 
     std::size_t sent = 0;
     while (sent < req.size()) {
-        const auto n = ::send(fd_, req.data() + sent, req.size() - sent, 0);
+        const auto n = ::send(fd_, req.data() + sent, req.size() - sent, MSG_NOSIGNAL);
         if (n <= 0) {
             return finish(std::unexpected(make_err(domain::ErrorCode::Connection, "send failed")));
         }
         sent += static_cast<std::size_t>(n);
     }
 
-    std::uint8_t header[7];
+    std::uint8_t header[6];
     std::size_t got = 0;
     while (got < sizeof(header)) {
         const auto n = ::recv(fd_, header + got, sizeof(header) - got, 0);

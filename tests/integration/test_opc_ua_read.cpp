@@ -99,7 +99,7 @@ std::shared_ptr<opc::project::Project> ua_sample_project(std::uint16_t port) {
 
 }  // namespace
 
-TEST_CASE("parse_cli recognizes --no-opcua", "[app][cli]") {
+TEST_CASE("parse_cli recognizes --no-opcua", "[integration][app][cli]") {
     const char* argv[] = {"OPC_SERVER", "--no-opcua", "--once"};
     auto opts = opc::app::parse_cli(3, argv);
     REQUIRE(opts.errors.empty());
@@ -107,7 +107,7 @@ TEST_CASE("parse_cli recognizes --no-opcua", "[app][cli]") {
     CHECK(opts.once);
 }
 
-TEST_CASE("OpcUaServer exposes TagStore values via Read", "[opcua][read]") {
+TEST_CASE("OpcUaServer exposes TagStore values via Read", "[integration][opcua][read]") {
     const auto port = free_tcp_port();
     auto project = ua_sample_project(port);
     NullLog log;
@@ -211,7 +211,7 @@ TEST_CASE("OpcUaServer exposes TagStore values via Read", "[opcua][read]") {
     server.stop();
 }
 
-TEST_CASE("ServerRuntime with OPC UA publishes polled values", "[opcua][runtime]") {
+TEST_CASE("ServerRuntime with OPC UA publishes polled values", "[integration][opcua][runtime]") {
     const auto port = free_tcp_port();
     auto project = ua_sample_project(port);
     ManualClock clock{1000};

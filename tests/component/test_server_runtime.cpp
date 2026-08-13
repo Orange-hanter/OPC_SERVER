@@ -48,7 +48,7 @@ std::shared_ptr<const opc::project::Project> sample_project() {
 
 }  // namespace
 
-TEST_CASE("parse_cli recognizes project and once/watch", "[app][cli]") {
+TEST_CASE("parse_cli recognizes project and once/watch", "[component][app][cli]") {
     const char* argv[] = {"OPC_SERVER", "--project", "x.json", "--once", "--watch", "--period-ms", "250"};
     auto opts = opc::app::parse_cli(7, argv);
     REQUIRE(opts.errors.empty());
@@ -58,7 +58,7 @@ TEST_CASE("parse_cli recognizes project and once/watch", "[app][cli]") {
     CHECK(opts.watch_period_ms == 250);
 }
 
-TEST_CASE("ServerRuntime bootstraps with injected fake transport", "[app][runtime]") {
+TEST_CASE("ServerRuntime bootstraps with injected fake transport", "[component][app][runtime]") {
     auto project = sample_project();
     ManualClock clock{1000};
     NullMetrics metrics;

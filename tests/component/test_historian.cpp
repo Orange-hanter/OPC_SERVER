@@ -58,7 +58,7 @@ std::shared_ptr<const opc::project::Project> tiny_project() {
 
 }  // namespace
 
-TEST_CASE("RingHistorian rings and counts drops", "[adapters][historian]") {
+TEST_CASE("RingHistorian rings and counts drops", "[component][adapters][historian]") {
     MemoryMetrics metrics;
     RingHistorian hist(3, &metrics);
 
@@ -79,7 +79,7 @@ TEST_CASE("RingHistorian rings and counts drops", "[adapters][historian]") {
     REQUIRE(std::get<float>(recent[2].value.value) == Catch::Approx(2.f));
 }
 
-TEST_CASE("Historian replay restores TagStore chronologically", "[adapters][historian][replay]") {
+TEST_CASE("Historian replay restores TagStore chronologically", "[component][adapters][historian][replay]") {
     RingHistorian hist(8);
     hist.record(7, make_good(1.f, 1));
     hist.record(7, make_good(2.f, 2));
@@ -93,7 +93,7 @@ TEST_CASE("Historian replay restores TagStore chronologically", "[adapters][hist
     REQUIRE(got->server_ts == 3);
 }
 
-TEST_CASE("SqliteHistorian flushes hot samples to cold storage", "[adapters][historian][sqlite]") {
+TEST_CASE("SqliteHistorian flushes hot samples to cold storage", "[component][adapters][historian][sqlite]") {
     const auto db_path =
         (std::filesystem::temp_directory_path() / "opc_historian_test.sqlite").string();
     std::filesystem::remove(db_path);
@@ -120,7 +120,7 @@ TEST_CASE("SqliteHistorian flushes hot samples to cold storage", "[adapters][his
 }
 
 TEST_CASE("SqliteHistorian keeps pending samples beyond hot capacity until flush",
-          "[adapters][historian][sqlite]") {
+          "[component][adapters][historian][sqlite]") {
     const auto db_path =
         (std::filesystem::temp_directory_path() / "opc_historian_pending.sqlite").string();
     std::filesystem::remove(db_path);
@@ -137,7 +137,7 @@ TEST_CASE("SqliteHistorian keeps pending samples beyond hot capacity until flush
     std::filesystem::remove(db_path);
 }
 
-TEST_CASE("ServerRuntime subscribes historian to TagStore", "[app][historian]") {
+TEST_CASE("ServerRuntime subscribes historian to TagStore", "[component][app][historian]") {
     auto project = tiny_project();
     opc::adapters::ManualClock clock{1000};
     MemoryMetrics metrics;
@@ -168,7 +168,7 @@ TEST_CASE("ServerRuntime subscribes historian to TagStore", "[app][historian]") 
     REQUIRE(std::get<float>(recent[0].value.value) == Catch::Approx(42.f));
 }
 
-TEST_CASE("parse_cli historian and frame-log flags", "[app][cli]") {
+TEST_CASE("parse_cli historian and frame-log flags", "[component][app][cli]") {
     const char* argv[] = {"OPC_SERVER",
                           "--no-historian",
                           "--historian-capacity",

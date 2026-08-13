@@ -32,7 +32,7 @@ fs::path repo_root() {
 
 }  // namespace
 
-TEST_CASE("demo-plant.modbusproj.json loads and validates", "[project]") {
+TEST_CASE("demo-plant.modbusproj.json loads and validates", "[contract][project]") {
     const auto path = repo_root() / "DOCs" / "examples" / "demo-plant.modbusproj.json";
     REQUIRE(fs::exists(path));
 
@@ -53,7 +53,7 @@ TEST_CASE("demo-plant.modbusproj.json loads and validates", "[project]") {
     CHECK(tank.tags.front().type == opc::project::TagType::Float32);
 }
 
-TEST_CASE("invalid project reports errors", "[project]") {
+TEST_CASE("invalid project reports errors", "[contract][project]") {
     constexpr std::string_view kBad = R"({
       "schemaVersion": 1,
       "name": "bad",
@@ -66,7 +66,7 @@ TEST_CASE("invalid project reports errors", "[project]") {
     REQUIRE_FALSE(result.diagnostics.empty());
 }
 
-TEST_CASE("unknown endpointId is an error", "[project]") {
+TEST_CASE("unknown endpointId is an error", "[contract][project]") {
     constexpr std::string_view kJson = R"({
       "schemaVersion": 1,
       "name": "x",
@@ -94,7 +94,7 @@ TEST_CASE("unknown endpointId is an error", "[project]") {
     CHECK(found);
 }
 
-TEST_CASE("migrate legacy config.json produces loadable project", "[migrate]") {
+TEST_CASE("migrate legacy config.json produces loadable project", "[contract][project][migrate]") {
     const auto legacy_path = repo_root() / "DOCs" / "config.json";
     REQUIRE(fs::exists(legacy_path));
 

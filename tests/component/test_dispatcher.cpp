@@ -46,7 +46,7 @@ std::shared_ptr<const opc::project::Project> tiny_project() {
 
 }  // namespace
 
-TEST_CASE("Dispatcher poll and write via fake transport", "[core][dispatcher]") {
+TEST_CASE("Dispatcher poll and write via fake transport", "[component][core][dispatcher]") {
     auto project = tiny_project();
     RuntimeIndex index = RuntimeIndex::build(project);
 
@@ -94,7 +94,7 @@ TEST_CASE("Dispatcher poll and write via fake transport", "[core][dispatcher]") 
     REQUIRE((*regs)[0] == 99);
 }
 
-TEST_CASE("Dispatcher Bad write keeps prior value; QueueFull is returned", "[core][dispatcher][hardening]") {
+TEST_CASE("Dispatcher Bad write keeps prior value; QueueFull is returned", "[component][core][dispatcher][hardening]") {
     auto project = tiny_project();
     RuntimeIndex index = RuntimeIndex::build(project);
     TagStore store;

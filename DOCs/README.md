@@ -22,6 +22,10 @@
 | [10 — Quality gates](10-quality-gates.md) | Ворота merge / CI |
 | [11 — CI and releases](11-ci-and-releases.md) | Actions, артефакты, SemVer-релизы |
 | [12 — Современный CMake и Conan 2](12-modern-cmake.md) | Presets, target-based настройки, санитайзеры, CPack и package manager |
+| [13 — Программа тестирования](13-testing-program.md) | Таксономия, стандарты, матрица требование→тест, CI/nightly/lab |
+| [FAT checklist](testing/fat-checklist.md) | Factory acceptance на симуляторе |
+| [SAT checklist](testing/sat-checklist.md) | Site acceptance на объекте |
+| [OPC UA CTT](testing/opc-ua-ctt.md) | Lab conformance |
 | [ADR index](adr/README.md) | Architecture Decision Records |
 | [CONTRIBUTING](../CONTRIBUTING.md) | Как вносить изменения |
 | [CHANGELOG](../CHANGELOG.md) | История версий |

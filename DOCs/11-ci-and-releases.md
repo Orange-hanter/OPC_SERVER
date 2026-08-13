@@ -14,16 +14,30 @@
 | `pull_request` → `master` | build + test |
 | `workflow_dispatch` | manual run |
 
-### Jobs
+### Jobs (default PR)
 
-- **Ubuntu 24.04 + g++** (primary): CMake preset `ci`, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
+- **Ubuntu 24.04 + g++** (primary): CMake preset `ci`, `scripts/layer-lint.py`, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
+- **ASan/UBSan**: preset `asan` + `ctest --preset asan` (блокер PR).
 - **Conan 2**: optional dependency provider job (`OPC_DEPENDENCY_PROVIDER=CONAN`).
 - Clang is supported locally with `-DCMAKE_CXX_FLAGS=-stdlib=libstdc++` when libstdc++ provides `std::expected`; not required in CI until runners ship a complete C++23 STL for Clang.
-- **Studio quality**: npm lockfile install, lint, TypeScript check, Vitest and
-  production web-assets build.
+- **Studio quality**: npm lockfile install, lint, TypeScript check, Vitest,
+  Playwright (browser mock) and production web-assets build. `cargo test` for
+  sidecar path/IPC guards.
 - **Studio package matrix**: native `opc-map`/`opc-monitor` sidecars plus Tauri
   packages for Windows x64, Linux x64 and macOS arm64. Packages are retained as
   Actions artifacts for 14 days.
+
+### Nightly / `workflow_dispatch` (`.github/workflows/nightly.yml`)
+
+Не блокер merge (кроме оговорённого TSan перед Asio):
+
+- TSan preset + `[core]` tests
+- `OPC_E2E=1` lab MVP scenario
+- Coverage отчёт `domain`/`core`/`project` (порог 70% — warning, затем gate)
+- Clang fuzzer smoke (`OPC_ENABLE_FUZZERS`), если toolchain доступен
+- Короткий soak (`OPC_SOAK=1`, минуты, не часы)
+
+Lab/release (не Actions по умолчанию): OPC UA CTT, FAT/SAT, HIL — см. [13-testing-program.md](13-testing-program.md).
 
 Artifacts from CI are **not** GitHub Releases — they are intermediate build products for debugging/QA.
 
@@ -107,9 +121,9 @@ Repository admin should confirm:
 ## Local package smoke
 
 ```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
-cmake --build build
-ctest --test-dir build --output-on-failure
-cmake --install build --prefix stage
-./stage/bin/opc-map validate DOCs/examples/demo-plant.modbusproj.json
+cmake --workflow --preset dev
+python3 scripts/layer-lint.py
+cmake --workflow --preset asan
+./build/dev/tools/opc-map/opc-map validate DOCs/examples/demo-plant.modbusproj.json
+OPC_E2E=1 ./build/dev/tests/opc_tests "[e2e]"
 ```

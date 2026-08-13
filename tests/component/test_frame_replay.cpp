@@ -52,7 +52,7 @@ opc::ports::FrameRecord holding_read_frame(std::uint16_t value) {
 
 }  // namespace
 
-TEST_CASE("ReplayModbusTransport returns recorded holding registers", "[adapters][replay]") {
+TEST_CASE("ReplayModbusTransport returns recorded holding registers", "[component][adapters][replay]") {
     ReplayModbusTransport transport({holding_read_frame(42)});
     REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
     auto regs = transport.read_holding_registers(1, 0, 1);
@@ -62,7 +62,7 @@ TEST_CASE("ReplayModbusTransport returns recorded holding registers", "[adapters
     CHECK(transport.remaining() == 0);
 }
 
-TEST_CASE("Dispatcher poll via frame replay", "[adapters][replay][dispatcher]") {
+TEST_CASE("Dispatcher poll via frame replay", "[component][adapters][replay][dispatcher]") {
     auto project = uint16_project();
     RuntimeIndex index = RuntimeIndex::build(project);
     TagStore store;
@@ -88,7 +88,7 @@ TEST_CASE("Dispatcher poll via frame replay", "[adapters][replay][dispatcher]") 
     CHECK(metrics.counter("modbus_poll_rtt_ms.count") == Catch::Approx(1.0));
 }
 
-TEST_CASE("parse_frame_log_line rejects comments", "[adapters][replay]") {
+TEST_CASE("parse_frame_log_line rejects comments", "[component][adapters][replay]") {
     auto parsed = opc::adapters::parse_frame_log_line("# header");
     REQUIRE_FALSE(parsed);
 }

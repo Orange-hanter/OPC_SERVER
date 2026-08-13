@@ -415,3 +415,73 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("failed to run OPC Engineering Studio");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn project_path_accepts_json_suffixes() {
+        assert!(validate_project_path(Path::new("plant.modbusproj.json")).is_ok());
+        assert!(validate_project_path(Path::new("plant.json")).is_ok());
+        assert!(validate_project_path(Path::new("plant.txt")).is_err());
+        assert!(validate_project_path(Path::new("plant.modbusproj.json.bak")).is_err());
+    }
+
+    #[test]
+    fn parse_validation_line_splits_severity_path_message() {
+        let issue = parse_validation_line("error: /devices/0: unknown endpoint").expect("line");
+        assert_eq!(issue.severity, "error");
+        assert_eq!(issue.path, "/devices/0");
+        assert_eq!(issue.message, "unknown endpoint");
+        assert_eq!(issue.source, "opc-map");
+        assert!(parse_validation_line("not a diagnostic").is_none());
+    }
+
+    #[test]
+    fn write_and_read_project_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("plant.modbusproj.json");
+        let saved = write_project(
+            path.to_string_lossy().into_owned(),
+            r#"{"schemaVersion":1,"name":"lab"}"#.into(),
+        )
+        .unwrap();
+        let loaded = read_project(saved).unwrap();
+        assert!(loaded.content.contains("schemaVersion"));
+        assert!(loaded.path.ends_with("plant.modbusproj.json"));
+    }
+
+    #[test]
+    fn rejects_oversized_project_content() {
+        let too_big = "x".repeat((MAX_PROJECT_BYTES + 1) as usize);
+        let err = write_project("x.json".into(), too_big).unwrap_err();
+        assert!(err.contains("16 MiB"));
+    }
+
+    #[test]
+    fn rejects_invalid_json_on_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("plant.modbusproj.json");
+        let err = write_project(path.to_string_lossy().into_owned(), "{".into()).unwrap_err();
+        assert!(err.contains("invalid JSON"));
+    }
+
+    #[test]
+    fn translate_monitor_events() {
+        let connected = translate_monitor_event(json!({"event":"connection","state":"connected"}));
+        assert_eq!(connected["type"], "status");
+        assert_eq!(connected["status"], "connected");
+
+        let change = translate_monitor_event(json!({
+            "event": "dataChange",
+            "nodeId": "ns=2;s=Plant/Tank1/Level",
+            "statusName": "UncertainLastUsableValue",
+            "value": 1.5
+        }));
+        assert_eq!(change["type"], "value");
+        assert_eq!(change["value"]["quality"], "Uncertain");
+        assert_eq!(change["value"]["browseName"], "Level");
+    }
+}

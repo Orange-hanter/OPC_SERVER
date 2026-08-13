@@ -54,6 +54,7 @@ OPC Classic / DA не входят в ядро; граница — [DOCs/01-over
 | Проекты карт | [DOCs/03-modbus-projects.md](DOCs/03-modbus-projects.md) |
 | Пример | [DOCs/examples/demo-plant.modbusproj.json](DOCs/examples/demo-plant.modbusproj.json) |
 | Roadmap | [DOCs/07-roadmap.md](DOCs/07-roadmap.md) |
+| Программа тестирования | [DOCs/13-testing-program.md](DOCs/13-testing-program.md) |
 | Современный CMake и Conan | [DOCs/12-modern-cmake.md](DOCs/12-modern-cmake.md) |
 
 ## Сборка

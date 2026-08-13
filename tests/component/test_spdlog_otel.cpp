@@ -8,7 +8,7 @@
 #include <fstream>
 #include <string>
 
-TEST_CASE("SpdlogLog writes structured lines to file", "[adapters][spdlog]") {
+TEST_CASE("SpdlogLog writes structured lines to file", "[component][adapters][spdlog]") {
     const auto path = (std::filesystem::temp_directory_path() / "opc_spdlog_test.log").string();
     std::filesystem::remove(path);
     {
@@ -27,7 +27,7 @@ TEST_CASE("SpdlogLog writes structured lines to file", "[adapters][spdlog]") {
     std::filesystem::remove(path);
 }
 
-TEST_CASE("OtelMetrics records counters without export", "[adapters][otel]") {
+TEST_CASE("OtelMetrics records counters without export", "[component][adapters][otel]") {
     opc::adapters::OtelMetrics metrics({
         .export_mode = opc::adapters::MetricsExportMode::None,
         .service_name = "opc-test",
@@ -39,7 +39,7 @@ TEST_CASE("OtelMetrics records counters without export", "[adapters][otel]") {
     metrics.force_flush();
 }
 
-TEST_CASE("parse_cli log and metrics flags", "[app][cli]") {
+TEST_CASE("parse_cli log and metrics flags", "[component][app][cli]") {
     const char* argv[] = {"OPC_SERVER",
                           "--log-level",
                           "debug",

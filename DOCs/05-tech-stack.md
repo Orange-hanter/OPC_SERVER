@@ -72,9 +72,18 @@ UDP — второй этап того же абстрактного transport-�
 
 | Компонент | Выбор |
 |-----------|--------|
-| Unit / integration | **Catch2** (или GoogleTest — один на репозиторий; по умолчанию Catch2) |
-| Property-тесты | byte order / pack-unpack float32↔регистры |
-| Фейки | in-memory Modbus slave для CI; UA client smoke (open62541 client) |
+| Unit / component / contract | **Catch2** 3.x (единственный C++-раннер) |
+| Property-тесты | Catch2 `GENERATOR`: byte order × `TagType` × scale/offset |
+| Фейки | `FakeModbusTransport` + `ManualClock`; loopback MBAP slave в `tests/support` |
+| UA smoke | open62541 client, ephemeral `opc.tcp` |
+| E2E lab | `OPC_E2E=1` — процесс сервера + slave + UA client |
+| Санитайзеры | ASan/UBSan (PR), TSan (nightly) |
+| Coverage | gcov/llvm-cov на `domain`/`core`/`project` |
+| Fuzz | libFuzzer на JSON loader (Clang) |
+| Studio | Vitest, Playwright mock, `cargo test` |
+| Conformance | OPC Foundation CTT — lab, не default CI |
+
+Норматив: [13-testing-program.md](13-testing-program.md), [ADR-0004](adr/0004-testing-strategy.md).
 
 ## Инструмент инженерии `opc-map`
 

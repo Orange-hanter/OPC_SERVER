@@ -20,6 +20,10 @@ function(opc_configure_project_options)
     )
   endif()
 
+  if(OPC_ENABLE_SANITIZERS AND OPC_ENABLE_TSAN)
+    message(FATAL_ERROR "OPC_ENABLE_SANITIZERS and OPC_ENABLE_TSAN cannot be combined")
+  endif()
+
   if(OPC_ENABLE_SANITIZERS)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
       target_compile_options(opc_project_options INTERFACE
@@ -33,6 +37,30 @@ function(opc_configure_project_options)
     else()
       message(FATAL_ERROR
         "OPC_ENABLE_SANITIZERS currently supports GCC and Clang only.")
+    endif()
+  endif()
+
+  if(OPC_ENABLE_TSAN)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_compile_options(opc_project_options INTERFACE
+        -fsanitize=thread
+        -fno-omit-frame-pointer
+      )
+      target_link_options(opc_project_options INTERFACE
+        -fsanitize=thread
+        -fno-omit-frame-pointer
+      )
+    else()
+      message(FATAL_ERROR "OPC_ENABLE_TSAN currently supports GCC and Clang only.")
+    endif()
+  endif()
+
+  if(OPC_ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_compile_options(opc_project_options INTERFACE --coverage -O0 -g)
+      target_link_options(opc_project_options INTERFACE --coverage)
+    else()
+      message(FATAL_ERROR "OPC_ENABLE_COVERAGE currently supports GCC and Clang only.")
     endif()
   endif()
 

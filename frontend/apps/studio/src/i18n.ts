@@ -99,6 +99,8 @@ const messages = {
   },
 } as const
 
+export { messages }
+
 export type MessageKey = keyof typeof messages.en
 export const I18nContext = createContext({ locale: 'en' as Locale, t: (key: MessageKey) => messages.en[key] as string })
 export const useI18n = () => useContext(I18nContext)

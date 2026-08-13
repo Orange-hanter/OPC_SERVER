@@ -9,6 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Testing program ([DOCs/13-testing-program.md](DOCs/13-testing-program.md)):
+  taxonomy, ISO/IEC 25010 / 29119 / IEC 62443 practices, requirement matrix,
+  FAT/SAT/CTT checklists, Catch2 layout `tests/{unit,component,contract,integration,lab}`
+- Property tests for Translator, expanded `FakeModbusTransport`, Modbus TCP
+  loopback slave, `OPC_E2E=1` MVP scenario, layer-lint, ASan CI, TSan/coverage presets
+- Studio schema-parity fixtures, Vitest coverage of Monitor/i18n, `cargo test` sidecar guards
 - Tauri 2 Engineering Studio for Windows, Linux and macOS with local project
   editing, JSON Schema/`opc-map` validation, RU/EN themes and read-only remote
   OPC UA monitoring (ADR-0016)
@@ -43,9 +49,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - CI/release strategy documentation (`DOCs/11-ci-and-releases.md`)
 - CMake `install()` rules for `OPC_SERVER` and `opc-map`
 
-### Fixed
-
-- Write batch tail no longer dropped when a Modbus write fails mid-flush
+- `ModbusTcpTransport` MBAP receive now reads the 6-byte prefix plus `length`
+  (unit + PDU), matching the Modbus TCP spec; loopback tests caught the extra-byte wait
+- `send()` uses `MSG_NOSIGNAL` so a dropped Modbus peer returns an error instead of SIGPIPE
 - Bad/WriteRejected publishes keep the previous engineering ScalarValue
 - Removed adapters→core coupling via `RuntimeIndex` in the OPC UA adapter
 

@@ -26,8 +26,13 @@ tests/
   unit/
   component/
   contract/
+  integration/
+  lab/
+  support/
+  fixtures/
 DOCs/
   adr/             # Architecture Decision Records
+  testing/         # FAT/SAT/CTT checklists
 ```
 
 ### Правило зависимостей (enforce вручную + code review)

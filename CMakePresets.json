@@ -58,6 +58,24 @@
       }
     },
     {
+      "name": "tsan",
+      "displayName": "TSan",
+      "description": "Debug build with ThreadSanitizer for TagStore/Dispatcher",
+      "inherits": "dev",
+      "cacheVariables": {
+        "OPC_ENABLE_TSAN": true
+      }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Coverage",
+      "description": "Debug build with gcov instrumentation for domain/core/project",
+      "inherits": "dev",
+      "cacheVariables": {
+        "OPC_ENABLE_COVERAGE": true
+      }
+    },
+    {
       "name": "unity",
       "displayName": "Unity build + PCH",
       "description": "Demonstrates CMake unity builds and precompiled headers",
@@ -90,6 +108,16 @@
       "jobs": 0
     },
     {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "jobs": 0
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "jobs": 0
+    },
+    {
       "name": "unity",
       "configurePreset": "unity",
       "jobs": 0
@@ -111,6 +139,16 @@
     {
       "name": "asan",
       "configurePreset": "asan",
+      "inherits": "dev"
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "inherits": "dev"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
       "inherits": "dev"
     },
     {
@@ -167,6 +205,24 @@
         {
           "type": "test",
           "name": "asan"
+        }
+      ]
+    },
+    {
+      "name": "tsan",
+      "description": "Configure, build, and test with ThreadSanitizer",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "tsan"
+        },
+        {
+          "type": "build",
+          "name": "tsan"
+        },
+        {
+          "type": "test",
+          "name": "tsan"
         }
       ]
     }

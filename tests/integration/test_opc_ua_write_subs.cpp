@@ -146,7 +146,7 @@ void on_data_change(UA_Client* /*client*/,
 
 }  // namespace
 
-TEST_CASE("UA Write enqueues Dispatcher and reaches Modbus", "[opcua][write]") {
+TEST_CASE("UA Write enqueues Dispatcher and reaches Modbus", "[integration][opcua][write]") {
     const auto port = free_tcp_port();
     auto project = stage4_project(port);
     ManualClock clock{1000};
@@ -218,7 +218,7 @@ TEST_CASE("UA Write enqueues Dispatcher and reaches Modbus", "[opcua][write]") {
     server.stop();
 }
 
-TEST_CASE("UA Subscription notifies on TagStore publish", "[opcua][subscription]") {
+TEST_CASE("UA Subscription notifies on TagStore publish", "[integration][opcua][subscription]") {
     const auto port = free_tcp_port();
     auto project = stage4_project(port);
     NullLog log;
@@ -297,7 +297,7 @@ TEST_CASE("UA Subscription notifies on TagStore publish", "[opcua][subscription]
     server.stop();
 }
 
-TEST_CASE("UA write to non-writable tag returns BadNotWritable", "[opcua][write][hardening]") {
+TEST_CASE("UA write to non-writable tag returns BadNotWritable", "[integration][opcua][write][hardening]") {
     const auto port = free_tcp_port();
     auto project = stage4_project(port);
     NullLog log;

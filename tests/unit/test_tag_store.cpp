@@ -8,7 +8,7 @@ using opc::domain::QualityReason;
 using opc::domain::TagId;
 using opc::domain::TagValue;
 
-TEST_CASE("TagStore publish/get/subscribe", "[core][tagstore]") {
+TEST_CASE("TagStore publish/get/subscribe", "[unit][core][tagstore]") {
     opc::core::TagStore store;
     int calls = 0;
     TagValue seen{};
@@ -37,7 +37,7 @@ TEST_CASE("TagStore publish/get/subscribe", "[core][tagstore]") {
     REQUIRE(calls == 1);
 }
 
-TEST_CASE("TagStore mark_stale_before", "[core][tagstore]") {
+TEST_CASE("TagStore mark_stale_before", "[unit][core][tagstore]") {
     opc::core::TagStore store;
     TagValue v;
     v.value = std::uint16_t{1};
