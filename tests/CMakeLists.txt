@@ -1,6 +1,9 @@
 add_executable(opc_tests
   test_project.cpp
   test_doctor.cpp
+  test_import_csv.cpp
+  test_gen_nodeset.cpp
+  test_runtime_doctor.cpp
   test_tag_store.cpp
   test_fake_modbus.cpp
   test_translator.cpp

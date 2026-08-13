@@ -26,13 +26,12 @@
 
 ## Возможности
 
-**Сейчас (лабораторный MVP + reactor):** проекты карт + `opc-map` (validate/doctor/migrate-legacy),
+**Сейчас (лабораторный MVP + reactor):** проекты карт + `opc-map` (validate/doctor/migrate-legacy/import-csv/gen-nodeset),
 TagStore/Translator/Dispatcher, sync Modbus TCP за Asio strand-per-endpoint,
 `ServerRuntime`, **OPC UA Read/Write/Subscriptions** (DataSource, security None),
 Diagnostics, historian/frame-log, spdlog/OTel metrics, **OPC Engineering Studio**.
 
-**Следующее:** `opc-map import-csv` / `gen-nodeset` (инкремент C в [roadmap](DOCs/07-roadmap.md)),
-затем SignAndEncrypt.
+**Следующее:** SignAndEncrypt и нагрузочный стенд (инкремент D в [roadmap](DOCs/07-roadmap.md)).
 
 OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
 
@@ -67,6 +66,9 @@ cmake --workflow --preset dev
 ./build/dev/tools/opc-map/opc-map validate DOCs/examples/demo-plant.modbusproj.json
 ./build/dev/tools/opc-map/opc-map doctor DOCs/examples/demo-plant.modbusproj.json
 ./build/dev/tools/opc-map/opc-map migrate-legacy DOCs/config.json -o /tmp/migrated.modbusproj.json
+./build/dev/tools/opc-map/opc-map import-csv DOCs/examples/tank-registers.csv -o /tmp/from-csv.modbusproj.json
+./build/dev/tools/opc-map/opc-map gen-nodeset DOCs/examples/demo-plant.modbusproj.json -o /tmp/demo-plant.xml
+./build/dev/OPC_SERVER --project DOCs/examples/demo-plant.modbusproj.json --once --no-opcua --runtime-doctor
 ```
 
 ### Установка

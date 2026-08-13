@@ -2,8 +2,7 @@
 
 Документация в `DOCs/` задаёт целевое состояние. Ниже — **снимок факта** (что уже в `master`) и **порядок следующих инкрементов**. Исторический backlog опроса IoT/Modbus сохранён в [tasks.md](tasks.md) и покрывается этапами 1–2.
 
-Снимок: **2026-08-13**, `master` после PR #6 (CMake/Conan) и #8 (Engineering Studio).
-Инкремент A (Asio reactor) — в этой ветке.
+Снимок: **2026-08-13**. Инкременты A (Asio), B (CI/schema/FC15) и C (карты: CSV/nodeset/профили/runtime doctor) закрыты в этой линии веток.
 
 ## Где мы сейчас
 
@@ -14,7 +13,7 @@
 | Контур | Состояние |
 |--------|-----------|
 | Карты `*.modbusproj.json` + semantic validate | Есть |
-| `opc-map validate` / `doctor` / `migrate-legacy` | Есть |
+| `opc-map validate` / `doctor` / `migrate-legacy` / `import-csv` / `gen-nodeset` | Есть |
 | TagStore, Translator, Dispatcher (`writes_first`) | Есть |
 | Sync Modbus TCP (holding/input/coil/discrete; write FC05/06/16) | Есть |
 | `ServerRuntime` + CLI (`--once`/`--watch`/historian/log/metrics) | Есть |
@@ -28,7 +27,7 @@
 | Asio reactor / `steady_timer` вместо `sleep` | Есть — инкремент A |
 | Reconnect backoff + Bad/NoCommunication на endpoint | Есть (per-endpoint `mark_endpoint_bad`, не глобальный `mark_stale_before`) |
 | TSan CI / ASan CI | Есть — инкремент B |
-| `import-csv` / `gen-nodeset` / профили устройств | Нет |
+| `import-csv` / `gen-nodeset` / профили устройств / runtime doctor | Есть — инкремент C |
 | Sign / SignAndEncrypt | Нет |
 
 Тесты: ~40 Catch2 cases (project, doctor, core, UA smoke, historian, frame replay, opc-monitor) + Studio Vitest. Preset `asan` есть локально, в CI не гоняется.
@@ -115,10 +114,10 @@
 - [x] Tauri Engineering Studio: локальный редактор проектов + удалённый
   read-only OPC UA мониторинг (Windows/Linux/macOS) — ADR-0016
 - [x] `opc-monitor` JSON Lines sidecar (Browse / Subscriptions / reconnect)
-- [ ] `opc-map import-csv`
-- [ ] `opc-map gen-nodeset`
-- [ ] Профили устройств и библиотека шаблонов
-- [ ] Runtime doctor (частота exception, теги никогда не Good) — [06](06-dispatch-debug-store.md)
+- [x] `opc-map import-csv`
+- [x] `opc-map gen-nodeset`
+- [x] Профили устройств и библиотека шаблонов
+- [x] Runtime doctor (частота exception, теги никогда не Good) — [06](06-dispatch-debug-store.md)
 
 ### Этап 7 — Промышленное укрепление
 
@@ -156,14 +155,16 @@
 - FC15 `write_multiple_coils` на порте и coalesce consecutive coils в Dispatcher.
 - Метрики `ua_sessions` / `tag_quality`.
 
-### C — Инструменты карт (остаток этапа 6)
+### C — Инструменты карт (закрыт)
 
-Следующий код после B:
+**Состав (сделано):**
 
-- `opc-map import-csv` по контракту в [03](03-modbus-projects.md).
-- `opc-map gen-nodeset` (dump дерева / фрагмент UA).
-- Профили устройств (`deviceProfiles[]` в схеме уже намечены).
-- Runtime doctor — отдельный порт/CLI, не смешивать со static `opc-map doctor`.
+1. `opc-map import-csv` — CSV колонок из [03](03-modbus-projects.md) → loadable draft (`127.0.0.1:502`, один device, один poll group).
+2. `opc-map gen-nodeset` — фрагмент UA NodeSet2 (Objects i=85, FolderType i=61, BaseDataVariableType i=63) из `nodePath`.
+3. Профили устройств: при load, до validate, пустой `device.tags` копирует `deviceProfiles[].tags`; непустой — union, instance побеждает по `name`.
+4. Runtime doctor: `opc::core::runtime_doctor` + `OPC_SERVER --runtime-doctor` (со `--once` — stderr, exit 1 при Error). Не смешивается со static `opc-map doctor`.
+
+**Не делалось в C:** SignAndEncrypt, нагрузочные тесты, UDP.
 
 ### D — Промышленный security и нагрузка (этап 7)
 
@@ -194,9 +195,13 @@
 
 TSan/ASan в CI, JSON Schema engine, FC15, метрики `ua_sessions` / `tag_quality`.
 
-### Следующий milestone: инкремент C
+### Milestone: инкремент C — выполнен
 
-`opc-map import-csv` / `gen-nodeset`, профили устройств, runtime doctor.
+`opc-map import-csv` / `gen-nodeset`, expand `deviceProfiles` при load, `OPC_SERVER --runtime-doctor`.
+
+### Следующий milestone: инкремент D
+
+SignAndEncrypt, нагрузочный стенд, UDP transport.
 
 ## Связь с текущим репозиторием
 
@@ -204,7 +209,7 @@ TSan/ASan в CI, JSON Schema engine, FC15, метрики `ua_sessions` / `tag_q
 |--------|----------------|
 | Asio `io_context` + strand-per-endpoint; sync TCP на strand | Asio-native async Modbus TCP (по желанию) |
 | `reconnectDelayMs` backoff на strand | — |
-| `opc-map` validate (JSON Schema + semantic) / doctor / migrate | import-csv / gen-nodeset |
+| `opc-map` validate (JSON Schema + semantic) / doctor / migrate / import-csv / gen-nodeset | — |
 | Studio + opc-monitor, security None | SignAndEncrypt + cert profile |
 | OTel metrics including `ua_sessions` / `tag_quality`, OTLP opt-in | traces poll/write; OTLP в CI по флагу |
 | GCC CI + Conan + Studio matrix + ASan/TSan | — |

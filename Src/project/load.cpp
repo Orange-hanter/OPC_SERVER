@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace opc::project {
 namespace {
@@ -393,6 +394,55 @@ Project parse_project(const json& root, std::vector<Diagnostic>& diags) {
     return project;
 }
 
+void expand_device_profiles(Project& project) {
+    std::unordered_map<std::string, const DeviceProfile*> by_id;
+    for (const auto& profile : project.device_profiles) {
+        if (!profile.id.empty()) {
+            by_id.emplace(profile.id, &profile);
+        }
+    }
+
+    for (auto& device : project.devices) {
+        if (device.profile_id.empty()) {
+            continue;
+        }
+        const auto it = by_id.find(device.profile_id);
+        if (it == by_id.end()) {
+            continue;  // unknown profileId: validate() reports the error
+        }
+        const DeviceProfile& profile = *it->second;
+        if (profile.tags.empty()) {
+            continue;
+        }
+
+        std::unordered_map<std::string, Tag> overlay;
+        for (const auto& tag : device.tags) {
+            if (!tag.name.empty()) {
+                overlay[tag.name] = tag;
+            }
+        }
+        std::unordered_set<std::string> from_profile;
+        std::vector<Tag> merged;
+        merged.reserve(profile.tags.size() + device.tags.size());
+        for (const auto& profile_tag : profile.tags) {
+            if (!profile_tag.name.empty()) {
+                from_profile.insert(profile_tag.name);
+            }
+            if (!profile_tag.name.empty() && overlay.contains(profile_tag.name)) {
+                merged.push_back(overlay[profile_tag.name]);
+            } else {
+                merged.push_back(profile_tag);
+            }
+        }
+        for (const auto& tag : device.tags) {
+            if (tag.name.empty() || !from_profile.contains(tag.name)) {
+                merged.push_back(tag);
+            }
+        }
+        device.tags = std::move(merged);
+    }
+}
+
 }  // namespace
 
 LoadResult load_json_text(std::string_view text, std::string_view source_name) {
@@ -407,6 +457,7 @@ LoadResult load_json_text(std::string_view text, std::string_view source_name) {
     }
 
     result.project = parse_project(root, result.diagnostics);
+    expand_device_profiles(result.project);
     append_json_schema_diagnostics(root, source_name, result.diagnostics);
     validate(result.project, result.diagnostics);
 

@@ -1,0 +1,5 @@
+name,area,address,type,byteOrder,scale,offset,unit,writable,nodePath,group,description
+Tank1.Level,holding,0,float32,ABCD,1.0,0.0,m,false,Plant/Tank1/Level,csv-imported,Уровень жидкости
+Tank1.Temperature,holding,2,float32,CDAB,1.0,0.0,°C,false,Plant/Tank1/Temperature,csv-imported,Температура
+Tank1.Status,holding,4,uint16,AB,1.0,0.0,,false,Plant/Tank1/Status,csv-imported,"Битовая маска, статус"
+Tank1.Setpoint,holding,5,uint16,AB,0.1,0.0,m,true,Plant/Tank1/Setpoint,csv-imported,Уставка уровня

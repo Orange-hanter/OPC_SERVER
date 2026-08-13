@@ -58,12 +58,13 @@ Project
 
 1. **Именованные теги и иерархия** — SCADA видит `Plant/...`, а не `HR[40001]`.
 2. **Группы опроса** — быстрые и медленные точки без смешивания периодов.
-3. **Профили устройств** — шаблон «счётчик X / ПЧ Y» с типовой картой; instance задаёт только endpoint и unit id.
+3. **Профили устройств** — шаблон «счётчик X / ПЧ Y» с типовой картой; instance задаёт только endpoint и unit id. При load теги профиля раскрываются (union, instance побеждает по имени).
 4. **Единицы и scale/offset** — инженерные величины сразу в TagStore/UA.
 5. **Комментарии и `description`** — документация карты рядом с адресами.
-6. **Импорт** (спецификация tooling): CSV/Excel колонок `name,area,address,type,byteOrder,scale,offset,unit,writable` → фрагмент проекта.
+6. **Импорт** — `opc-map import-csv` колонок `name,area,address,type,byteOrder,scale,offset,unit,writable` → фрагмент проекта.
 7. **Валидация по JSON Schema** — ошибки до запуска на объекте.
 8. **`opc-map doctor`** — пересечения регистров, дыры в блоках, теги без группы, writable без FC16/FC06 и т.п.
+9. **`opc-map gen-nodeset`** — фрагмент UA NodeSet2 из `nodePath` для просмотра/импорта в UA-инструменты.
 
 ## CLI `opc-map`
 
@@ -74,8 +75,21 @@ Project
 | `opc-map validate <project>` | Есть | JSON Schema draft 2020-12 engine + semantic checks |
 | `opc-map doctor <project>` | Есть | Пересечения, дыры, unpolled tags, sparse/gappy блоки |
 | `opc-map migrate-legacy config.json -o out.modbusproj.json` | Есть | Миграция со старого [`config.json`](config.json) |
-| `opc-map gen-nodeset <project> -o out.xml` | План | Генерация фрагмента узлов / dump дерева UA |
-| `opc-map import-csv <csv> -o fragment.json` | План | Импорт таблицы регистров |
+| `opc-map gen-nodeset <project> -o out.xml` | Есть | Фрагмент UA NodeSet2: Folders (`i=61`) и Variables (`i=63`) из `nodePath`, корень Objects (`i=85`) |
+| `opc-map import-csv <csv> -o fragment.json` | Есть | Импорт таблицы регистров в loadable draft проекта |
+
+Флаги `import-csv`: `--device-id`, `--endpoint-id`, `--unit-id`, `--group`. Обязательные колонки CSV: `name,area,address,type,byteOrder,scale,offset,unit,writable`. Опционально: `nodePath`, `group`, `description`, `quantity`. Пустой `nodePath` → `Plant/<name>`. Черновик содержит placeholder endpoint `127.0.0.1:502`, одно устройство и одну poll group со всеми именами тегов — его можно сразу прогнать через `opc-map validate`.
+
+Пример таблицы: [examples/tank-registers.csv](examples/tank-registers.csv).
+
+### Профили устройств
+
+`deviceProfiles[]` — шаблон карты. При **load** (до semantic validate) runtime раскрывает профиль:
+
+- если у instance `tags` пустой — копируются теги профиля;
+- если непустой — **union** по `name`, поля instance побеждают.
+
+Instance может задать только `endpointId` + `unitId` + `profileId`. JSON Schema по-прежнему видит исходный файл (без expand). Studio редактирует JSON as-is; `opc-map validate` / `OPC_SERVER` работают уже с объединёнными тегами.
 
 ## Миграция с `DOCs/config.json`
 

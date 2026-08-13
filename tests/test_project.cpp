@@ -51,6 +51,98 @@ TEST_CASE("demo-plant.modbusproj.json loads and validates", "[project]") {
     REQUIRE_FALSE(tank.tags.empty());
     CHECK(tank.tags.front().name == "Tank1.Level");
     CHECK(tank.tags.front().type == opc::project::TagType::Float32);
+    REQUIRE(result.project.device_profiles.size() == 1);
+    CHECK(result.project.device_profiles.front().tags.size() == 3);
+    CHECK(tank.tags.size() == 4);
+}
+
+TEST_CASE("deviceProfiles expand onto devices at load (instance wins on name)", "[project][profiles]") {
+    constexpr std::string_view kJson = R"({
+      "schemaVersion": 1,
+      "name": "profiles",
+      "endpoints": [
+        {"id": "ep1", "host": "127.0.0.1", "port": 502, "transport": "tcp"}
+      ],
+      "deviceProfiles": [
+        {
+          "id": "sensor",
+          "name": "Sensor",
+          "tags": [
+            {"name": "Level", "nodePath": "Plant/Level", "area": "holding", "address": 0,
+             "type": "float32", "byteOrder": "ABCD", "group": "g1"},
+            {"name": "Temp", "nodePath": "Plant/Temp", "area": "holding", "address": 2,
+             "type": "float32", "byteOrder": "ABCD", "group": "g1"}
+          ]
+        }
+      ],
+      "devices": [
+        {
+          "id": "d1",
+          "endpointId": "ep1",
+          "unitId": 1,
+          "profileId": "sensor",
+          "tags": [
+            {"name": "Temp", "nodePath": "Plant/Tank1/Temp", "area": "holding", "address": 20,
+             "type": "float32", "byteOrder": "CDAB", "group": "g1"},
+            {"name": "Setpoint", "nodePath": "Plant/Setpoint", "area": "holding", "address": 5,
+             "type": "uint16", "byteOrder": "AB", "writable": true, "group": "g1"}
+          ]
+        }
+      ],
+      "pollGroups": [
+        {"id": "g1", "periodMs": 100, "priority": "fast", "deviceId": "d1",
+         "tagNames": ["Level", "Temp", "Setpoint"]}
+      ]
+    })";
+    const auto result = opc::project::load_json_text(kJson, "profiles.json");
+    for (const auto& d : result.diagnostics) {
+        INFO(d.path << ": " << d.message);
+    }
+    REQUIRE(result.ok);
+    REQUIRE(result.project.devices.size() == 1);
+    const auto& tags = result.project.devices.front().tags;
+    REQUIRE(tags.size() == 3);
+    CHECK(tags[0].name == "Level");
+    CHECK(tags[0].address == 0);
+    CHECK(tags[1].name == "Temp");
+    CHECK(tags[1].address == 20);
+    CHECK(tags[1].byte_order == "CDAB");
+    CHECK(tags[2].name == "Setpoint");
+    CHECK(tags[2].writable);
+}
+
+TEST_CASE("device with empty tags inherits profile tags", "[project][profiles]") {
+    constexpr std::string_view kJson = R"({
+      "schemaVersion": 1,
+      "name": "inherit",
+      "endpoints": [
+        {"id": "ep1", "host": "127.0.0.1", "port": 502, "transport": "tcp"}
+      ],
+      "deviceProfiles": [
+        {
+          "id": "sensor",
+          "name": "Sensor",
+          "tags": [
+            {"name": "Level", "area": "holding", "address": 0, "type": "uint16",
+             "byteOrder": "AB", "group": "g1"}
+          ]
+        }
+      ],
+      "devices": [
+        {"id": "d1", "endpointId": "ep1", "unitId": 7, "profileId": "sensor"}
+      ],
+      "pollGroups": [
+        {"id": "g1", "periodMs": 100, "priority": "fast", "deviceId": "d1", "tagNames": ["Level"]}
+      ]
+    })";
+    const auto result = opc::project::load_json_text(kJson, "inherit.json");
+    for (const auto& d : result.diagnostics) {
+        INFO(d.path << ": " << d.message);
+    }
+    REQUIRE(result.ok);
+    REQUIRE(result.project.devices.front().tags.size() == 1);
+    CHECK(result.project.devices.front().tags.front().name == "Level");
+    CHECK(result.project.devices.front().unit_id == 7);
 }
 
 TEST_CASE("invalid project reports errors", "[project]") {

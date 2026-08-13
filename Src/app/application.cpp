@@ -8,6 +8,7 @@
 #include "adapters/sqlite_historian.hpp"
 #include "adapters/system_clock.hpp"
 #include "app/version.hpp"
+#include "core/runtime_doctor.hpp"
 #include "ports/i_log.hpp"
 
 #include <algorithm>
@@ -184,13 +185,31 @@ int Application::run() {
         }
     };
 
-    if (options_.once) {
-        poll_and_watch(clock_->now_ms());
-        runtime_->stop();
-        if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
-            otel->force_flush();
+    const auto print_runtime_doctor = [&]() -> int {
+        const auto report = opc::core::runtime_doctor(runtime_->index(), runtime_->tag_store());
+        for (const auto& finding : report.findings) {
+            const char* level =
+                finding.severity == opc::core::RuntimeDoctorFinding::Severity::Error ? "error" : "warning";
+            std::cerr << level << ": " << finding.tag_name << ": " << finding.message << '\n';
         }
-        return 0;
+        std::cerr << "runtime-doctor: " << report.error_count << " error(s), " << report.warning_count
+                  << " warning(s)\n";
+        return report.error_count > 0 ? 1 : 0;
+    };
+
+    if (options_.once || options_.runtime_doctor) {
+        poll_and_watch(clock_->now_ms());
+        int doctor_rc = 0;
+        if (options_.runtime_doctor) {
+            doctor_rc = print_runtime_doctor();
+        }
+        if (options_.once) {
+            runtime_->stop();
+            if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
+                otel->force_flush();
+            }
+            return doctor_rc;
+        }
     }
 
     log_->info("app", "entering asio reactor (Ctrl+C to stop)");

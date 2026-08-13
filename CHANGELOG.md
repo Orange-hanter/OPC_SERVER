@@ -27,8 +27,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   dispatcher `modbus_poll_rtt_ms` histogram
 - Stage 5 tests (`tests/test_historian.cpp`, `tests/test_frame_log.cpp`)
 - Asio increment A (standalone Asio 1.32, strand-per-endpoint, reconnect backoff)
-- Increment B: JSON Schema engine in `opc-map validate`, FC15 coil writes,
-  `ua_sessions` / `tag_quality` metrics, ASan + TSan CI jobs
+- Increment C: `opc-map import-csv` / `gen-nodeset`, device profile expand at load,
+  `OPC_SERVER --runtime-doctor` (TagStore snapshot: missing / not Good)
 - Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
 - Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - `opc-map doctor`: register overlaps, unpolled tags, sparse/gappy poll blocks
@@ -48,8 +48,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Roadmap snapshot (2026-08-13): инкременты A (Asio reactor) и B (CI sanitizers,
-  JSON Schema, FC15, UA metrics) закрыты; дальше C–D (CSV/nodeset, security)
+- Roadmap snapshot (2026-08-13): инкременты A–C закрыты; дальше D (security/нагрузка)
 
 ### Fixed
 

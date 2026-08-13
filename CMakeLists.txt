@@ -48,6 +48,7 @@ endif()
 
 install(FILES
   "${PROJECT_SOURCE_DIR}/DOCs/examples/demo-plant.modbusproj.json"
+  "${PROJECT_SOURCE_DIR}/DOCs/examples/tank-registers.csv"
   "${PROJECT_SOURCE_DIR}/DOCs/schemas/modbus-project.schema.json"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/opc-server/examples"
   COMPONENT opc-server

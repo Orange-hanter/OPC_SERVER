@@ -4,6 +4,8 @@ add_library(opc_project
   schema.cpp
   migrate_legacy.cpp
   doctor.cpp
+  import_csv.cpp
+  gen_nodeset.cpp
 )
 add_library(opc::project ALIAS opc_project)
 

@@ -56,6 +56,7 @@ void print_usage(std::ostream& out) {
         << "             [--historian-db <path.sqlite>] [--frame-log <path>]\n"
         << "             [--log-level LEVEL] [--log-file <path>]\n"
         << "             [--metrics-export none|ostream|otlp] [--otlp-endpoint URL]\n"
+        << "             [--runtime-doctor]\n"
         << "  OPC_SERVER --version\n"
         << "  OPC_SERVER --help\n\n"
         << "Options:\n"
@@ -73,6 +74,8 @@ void print_usage(std::ostream& out) {
         << "  --log-file <path>           Also write rotating spdlog file sink\n"
         << "  --metrics-export <mode>     none|ostream|otlp (default none)\n"
         << "  --otlp-endpoint <url>       OTLP/HTTP metrics URL (requires -DOPC_WITH_OTLP=ON)\n"
+        << "  --runtime-doctor            After start+poll, print TagStore quality findings to stderr;\n"
+        << "                              with --once, exit 1 if any tag is missing or not Good\n"
         << "  --version                   Print version and exit\n";
 }
 
@@ -94,6 +97,10 @@ CliOptions parse_cli(int argc, char const* argv[]) {
         }
         if (arg == "--watch") {
             opts.watch = true;
+            continue;
+        }
+        if (arg == "--runtime-doctor") {
+            opts.runtime_doctor = true;
             continue;
         }
         if (arg == "--no-opcua") {

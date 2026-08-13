@@ -32,6 +32,7 @@
 |------|------------|
 | [schemas/modbus-project.schema.json](schemas/modbus-project.schema.json) | JSON Schema формата `*.modbusproj.json` |
 | [examples/demo-plant.modbusproj.json](examples/demo-plant.modbusproj.json) | Пример проекта карты Modbus |
+| [examples/tank-registers.csv](examples/tank-registers.csv) | Пример CSV для `opc-map import-csv` |
 | [config.json](config.json) | Устаревший прототип конфигурации (см. миграцию в документе 03) |
 
 ## Быстрый старт для читателя

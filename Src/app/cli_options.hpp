@@ -24,6 +24,7 @@ struct CliOptions {
     std::string log_file;  // empty = stderr only
     MetricsExportOption metrics_export{MetricsExportOption::None};
     std::string otlp_endpoint;  // used when metrics_export == OtlpHttp
+    bool runtime_doctor{false};
     bool help{false};
     bool version{false};
     std::vector<std::string> errors;

@@ -3,6 +3,7 @@ add_library(opc_core
   translator.cpp
   dispatcher.cpp
   runtime_index.cpp
+  runtime_doctor.cpp
 )
 add_library(opc::core ALIAS opc_core)
 
