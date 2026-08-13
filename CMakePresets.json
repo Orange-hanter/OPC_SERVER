@@ -1,0 +1,174 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "OPC_DEPENDENCY_PROVIDER": "AUTO"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Developer build",
+      "description": "Debug build with tests and strict warnings",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": true,
+        "OPC_ENABLE_WARNINGS": true
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Optimized release",
+      "description": "Release build with interprocedural optimization",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": false,
+        "OPC_ENABLE_IPO": true
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "Continuous integration",
+      "description": "Release-mode build with tests enabled",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": true
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "ASan + UBSan",
+      "description": "Debug build instrumented for memory and undefined behavior",
+      "inherits": "dev",
+      "cacheVariables": {
+        "OPC_ENABLE_SANITIZERS": true
+      }
+    },
+    {
+      "name": "unity",
+      "displayName": "Unity build + PCH",
+      "description": "Demonstrates CMake unity builds and precompiled headers",
+      "inherits": "dev",
+      "cacheVariables": {
+        "OPC_ENABLE_UNITY_BUILD": true,
+        "OPC_ENABLE_PCH": true
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "jobs": 0
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "jobs": 0
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "jobs": 0
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "jobs": 0
+    },
+    {
+      "name": "unity",
+      "configurePreset": "unity",
+      "jobs": 0
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 2,
+        "noTestsAction": "error",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "inherits": "dev"
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "inherits": "dev"
+    },
+    {
+      "name": "unity",
+      "configurePreset": "unity",
+      "inherits": "dev"
+    }
+  ],
+  "packagePresets": [
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "generators": [
+        "TGZ"
+      ]
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "dev",
+      "description": "Configure, build, and test the developer preset",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "dev"
+        },
+        {
+          "type": "build",
+          "name": "dev"
+        },
+        {
+          "type": "test",
+          "name": "dev"
+        }
+      ]
+    },
+    {
+      "name": "asan",
+      "description": "Configure, build, and test with sanitizers",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "asan"
+        },
+        {
+          "type": "build",
+          "name": "asan"
+        },
+        {
+          "type": "test",
+          "name": "asan"
+        }
+      ]
+    }
+  ]
+}

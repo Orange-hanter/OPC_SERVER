@@ -17,10 +17,13 @@
 | Компиляторы | **GCC ≥ 16** / Clang с `-std=c++26` (Linux); MSVC — по мере поддержки фич C++26 |
 | Качество | clang-tidy, `-Werror` в CI, clang-format |
 | Санитайзеры | ASan/UBSan (Linux debug), опционально TSan для TagStore |
-| Пакеты | CMake `FetchContent` / CPM для зависимостей; git submodules — только по необходимости |
+| Пакеты | **Conan 2** (`CMakeDeps` + `CMakeToolchain`) или CMake `FetchContent`; git submodules — только по необходимости |
 
 Целевой стандарт в `CMakeLists.txt`: `target_compile_features(... cxx_std_26)` и/или `-std=c++26`.  
 Базовый профиль разработки: GCC 16+ (полный C++26, включая reflection где доступно). Фичи вроде contracts/reflection используем там, где компилятор уже стабилен; остальное — через portable C++26 subset до выравнивания MSVC.
+
+Сборочные профили, переключатели качества и оба способа получения зависимостей
+разобраны в [практикуме по современному CMake и Conan 2](12-modern-cmake.md).
 
 ## Сетевой I/O
 
