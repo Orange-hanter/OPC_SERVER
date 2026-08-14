@@ -1,4 +1,5 @@
 #include "adapters/modbus_tcp_transport.hpp"
+#include "adapters/modbus_protocol.hpp"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -196,165 +197,60 @@ ModbusTcpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pd
     return finish(std::vector<std::uint8_t>(body.begin() + 1, body.end()));
 }
 domain::Result<std::vector<std::uint16_t>>
-ModbusTcpTransport::read_registers(std::uint8_t function,
-                                   std::uint8_t unit,
-                                   std::uint16_t address,
-                                   std::uint16_t quantity) {
-    std::vector<std::uint8_t> pdu;
-    pdu.push_back(function);
-    append_u16(pdu, address);
-    append_u16(pdu, quantity);
-    auto resp = transact(unit, pdu);
-    if (!resp) {
-        return std::unexpected(resp.error());
-    }
-    if (resp->size() < 2) {
-        return std::unexpected(make_err(domain::ErrorCode::Decoding, "short register response", false));
-    }
-    const auto byte_count = (*resp)[1];
-    if (resp->size() < 2u + byte_count || byte_count != quantity * 2) {
-        return std::unexpected(make_err(domain::ErrorCode::Decoding, "register byte count mismatch", false));
-    }
-    std::vector<std::uint16_t> out;
-    out.reserve(quantity);
-    for (std::uint16_t i = 0; i < quantity; ++i) {
-        const auto hi = (*resp)[2 + i * 2];
-        const auto lo = (*resp)[3 + i * 2];
-        out.push_back(static_cast<std::uint16_t>((hi << 8) | lo));
-    }
-    return out;
-}
-
-domain::Result<std::vector<bool>>
-ModbusTcpTransport::read_bits(std::uint8_t function,
-                              std::uint8_t unit,
-                              std::uint16_t address,
-                              std::uint16_t quantity) {
-    std::vector<std::uint8_t> pdu;
-    pdu.push_back(function);
-    append_u16(pdu, address);
-    append_u16(pdu, quantity);
-    auto resp = transact(unit, pdu);
-    if (!resp) {
-        return std::unexpected(resp.error());
-    }
-    if (resp->size() < 2) {
-        return std::unexpected(make_err(domain::ErrorCode::Decoding, "short bit response", false));
-    }
-    const auto byte_count = (*resp)[1];
-    if (resp->size() < 2u + byte_count) {
-        return std::unexpected(make_err(domain::ErrorCode::Decoding, "bit byte count mismatch", false));
-    }
-    std::vector<bool> out;
-    out.reserve(quantity);
-    for (std::uint16_t i = 0; i < quantity; ++i) {
-        const auto byte = (*resp)[2 + i / 8];
-        out.push_back(((byte >> (i % 8)) & 0x1u) != 0);
-    }
-    return out;
-}
-
-domain::Result<std::vector<std::uint16_t>>
 ModbusTcpTransport::read_holding_registers(std::uint8_t unit,
                                            std::uint16_t address,
                                            std::uint16_t quantity) {
-    return read_registers(0x03, unit, address, quantity);
+    return modbus_read_registers([this](auto u, auto p) { return transact(u, p); }, 0x03, unit, address,
+                                 quantity);
 }
 
 domain::Result<std::vector<std::uint16_t>>
 ModbusTcpTransport::read_input_registers(std::uint8_t unit,
                                          std::uint16_t address,
                                          std::uint16_t quantity) {
-    return read_registers(0x04, unit, address, quantity);
+    return modbus_read_registers([this](auto u, auto p) { return transact(u, p); }, 0x04, unit, address,
+                                 quantity);
 }
 
 domain::Result<std::vector<bool>>
 ModbusTcpTransport::read_coils(std::uint8_t unit, std::uint16_t address, std::uint16_t quantity) {
-    return read_bits(0x01, unit, address, quantity);
+    return modbus_read_bits([this](auto u, auto p) { return transact(u, p); }, 0x01, unit, address, quantity);
 }
 
 domain::Result<std::vector<bool>>
 ModbusTcpTransport::read_discrete_inputs(std::uint8_t unit,
                                          std::uint16_t address,
                                          std::uint16_t quantity) {
-    return read_bits(0x02, unit, address, quantity);
+    return modbus_read_bits([this](auto u, auto p) { return transact(u, p); }, 0x02, unit, address, quantity);
 }
 
 domain::Result<void>
 ModbusTcpTransport::write_single_register(std::uint8_t unit,
                                           std::uint16_t address,
                                           std::uint16_t value) {
-    std::vector<std::uint8_t> pdu;
-    pdu.push_back(0x06);
-    append_u16(pdu, address);
-    append_u16(pdu, value);
-    auto resp = transact(unit, pdu);
-    if (!resp) {
-        return std::unexpected(resp.error());
-    }
-    return {};
+    return modbus_write_single_register([this](auto u, auto p) { return transact(u, p); }, unit, address,
+                                        value);
 }
 
 domain::Result<void>
 ModbusTcpTransport::write_multiple_registers(std::uint8_t unit,
                                              std::uint16_t address,
                                              std::span<const std::uint16_t> values) {
-    std::vector<std::uint8_t> pdu;
-    pdu.push_back(0x10);
-    append_u16(pdu, address);
-    append_u16(pdu, static_cast<std::uint16_t>(values.size()));
-    pdu.push_back(static_cast<std::uint8_t>(values.size() * 2));
-    for (auto v : values) {
-        append_u16(pdu, v);
-    }
-    auto resp = transact(unit, pdu);
-    if (!resp) {
-        return std::unexpected(resp.error());
-    }
-    return {};
+    return modbus_write_multiple_registers([this](auto u, auto p) { return transact(u, p); }, unit, address,
+                                           values);
 }
 
 domain::Result<void>
 ModbusTcpTransport::write_single_coil(std::uint8_t unit, std::uint16_t address, bool value) {
-    std::vector<std::uint8_t> pdu;
-    pdu.push_back(0x05);
-    append_u16(pdu, address);
-    append_u16(pdu, value ? 0xFF00 : 0x0000);
-    auto resp = transact(unit, pdu);
-    if (!resp) {
-        return std::unexpected(resp.error());
-    }
-    return {};
+    return modbus_write_single_coil([this](auto u, auto p) { return transact(u, p); }, unit, address, value);
 }
 
 domain::Result<void>
 ModbusTcpTransport::write_multiple_coils(std::uint8_t unit,
                                          std::uint16_t address,
                                          std::span<const std::uint8_t> values) {
-    if (values.empty() || values.size() > 1968) {
-        return std::unexpected(make_err(domain::ErrorCode::InvalidArgument,
-                                        "FC15 quantity out of range",
-                                        false));
-    }
-    const auto quantity = static_cast<std::uint16_t>(values.size());
-    const auto byte_count = static_cast<std::uint8_t>((quantity + 7) / 8);
-    std::vector<std::uint8_t> packed(byte_count, 0);
-    for (std::size_t i = 0; i < values.size(); ++i) {
-        if (values[i] != 0) {
-            packed[i / 8] = static_cast<std::uint8_t>(packed[i / 8] | (1u << (i % 8)));
-        }
-    }
-    std::vector<std::uint8_t> pdu;
-    pdu.push_back(0x0F);
-    append_u16(pdu, address);
-    append_u16(pdu, quantity);
-    pdu.push_back(byte_count);
-    pdu.insert(pdu.end(), packed.begin(), packed.end());
-    auto resp = transact(unit, pdu);
-    if (!resp) {
-        return std::unexpected(resp.error());
-    }
-    return {};
+    return modbus_write_multiple_coils([this](auto u, auto p) { return transact(u, p); }, unit, address,
+                                       values);
 }
 
 }  // namespace opc::adapters

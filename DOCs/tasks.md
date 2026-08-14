@@ -3,7 +3,7 @@
 Актуальный backlog ядра. Порядок работ и критерии готовности: [07-roadmap.md](07-roadmap.md).  
 Исторический набросок 2019 (опрос IoT/Modbus) закрыт этапами 1–2; текст сохранён в конце файла.
 
-**Снимок:** 2026-08-14, линия веток A→B→C (`cursor/increment-c-860d`). В `master` пока Studio (PR #8); A/B/C — stacked PR #13/#14/#15.
+**Снимок:** 2026-08-14, линия веток A→B→C→D (`cursor/increment-d-860d`). В `master` пока Studio (PR #8); A/B/C/D — stacked PR #13/#14/#15/#16.
 
 ## Процент выполнения
 
@@ -11,16 +11,18 @@
 |--------|--------|-------------|
 | Лабораторный MVP (этапы 0–4) | **100%** | Все чеклисты закрыты; Read/Write/Subscriptions e2e |
 | Пост-MVP (4.5–6 + инкременты A–C) | **~95%** | Закрыто; открыт хвост этапа 5: OTLP default-on / traces |
-| Промышленное укрепление (этап 7 / инкремент D) | **0%** | SignAndEncrypt, нагрузка, UDP — не начаты |
-| **Roadmap ядра, этапы 0–7** | **~90%** | 52 из 56 пунктов чеклиста (без Classic/DA и прочего «вне ядра») |
-| Инкременты после Studio (A–D) | **75%** | A, B, C закрыты; D следующий |
+| Промышленное укрепление (этап 7 / инкремент D) | **100%** | SignAndEncrypt, нагрузка-smoke, UDP — в этой ветке |
+| **Roadmap ядра, этапы 0–7** | **~98%** | 55 из 56 пунктов чеклиста (без Classic/DA и прочего «вне ядра») |
+| Инкременты после Studio (A–D) | **100%** | A, B, C, D закрыты |
 
-«~90%» — закрытые пункты спецификации, **не** готовность к промышленному контуру: UA security = None, Modbus TCP на strand всё ещё блокирующий POSIX, нагрузочных тестов нет.
+«~98%» — закрытые пункты спецификации. Это **ещё не** полный промышленный контур: demo-plant остаётся на `None`, PKI по умолчанию AcceptAll (пока нет `--ua-strict-certs`), UDP — MBAP в датаграмме, не RTU, нагрузочный стенд — Catch2 smoke, не профилировщик RTT/CPU.
 
-Оговорки к «закрыто» в C:
+Оговорки к «закрыто» в D:
 
-- «библиотека шаблонов» = expand `deviceProfiles` + один профиль в demo-plant, не каталог вендоров;
-- runtime doctor = снимок TagStore (missing / not Good), не накопленная частота exception.
+- encryption-сборка open62541 + fail-closed, если проект просит Sign/Encrypt без `UA_ENABLE_ENCRYPTION`;
+- Studio/`opc-monitor` сертификатный профиль; username/password по-прежнему отклоняются;
+- load stand = 2 endpoints × 24 тега Fake poll + UA subscription smoke на `ServerStatus.State`;
+- UDP = `ModbusUdpTransport` за `IModbusTransport`, выбор по `endpoints[].transport`.
 
 ## Сейчас (закрыто)
 
@@ -37,17 +39,11 @@
 - [x] Инкремент A — Asio reactor
 - [x] Инкремент B — schema engine, FC15, sanitizer CI, UA metrics
 - [x] Инкремент C — CSV, NodeSet2, deviceProfiles expand, runtime doctor
+- [x] Инкремент D — Sign/SignAndEncrypt, cert profile Studio/opc-monitor, load stand, UDP Modbus
 
 ## Дальше (открыто)
 
-### Инкремент D — этап 7 (следующий код)
-
-- [ ] Sign / SignAndEncrypt: encryption-сборка open62541, `opcua.securityMode` из проекта не игнорировать
-- [ ] Studio / `opc-monitor`: сертификатный профиль (сейчас явно None)
-- [ ] Нагрузочный стенд: теги × endpoints × UA subscriptions (RTT, drop, CPU)
-- [ ] UDP Modbus — отдельный адаптер за `IModbusTransport`
-
-### Хвост этапа 5 (можно параллельно с D, не блокер D)
+### Хвост этапа 5 (не блокер D)
 
 - [ ] OTLP default-on в CI / traces на poll-write
 
@@ -59,7 +55,8 @@
 - Другие полевые протоколы без отдельного эпика Translator
 - HTTP/WebSocket API в `OPC_SERVER` (отклонён ADR-0016)
 - Каталог вендорских device profiles сверх demo `generic-tank-sensor`
+- Промышленный PKI (CA, reject list, username token) сверх lab self-signed / AcceptAll
 
 ## Исторический backlog (2019, закрыт)
 
-Опрос IoT по Modbus TCP (карта → PDU → сеть → буфер → повтор) и внутрипрограммный доступ/консоль — покрыто этапами 1–2 (проект карт, Dispatcher, TagStore, `--watch`). UDP из того же списка перенесён в инкремент D.
+Опрос IoT по Modbus TCP (карта → PDU → сеть → буфер → повтор) и внутрипрограммный доступ/консоль — покрыто этапами 1–2 (проект карт, Dispatcher, TagStore, `--watch`). UDP из того же списка закрыт инкрементом D.

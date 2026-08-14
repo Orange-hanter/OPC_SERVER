@@ -16,7 +16,7 @@
 
 ### Jobs
 
-- **Ubuntu 24.04 + g++** (primary): CMake preset `ci`, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
+- **Ubuntu 24.04 + g++** (primary): CMake preset `ci`, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days). Installs `libssl-dev` for open62541 encryption.
 - **ASan + UBSan**: preset `asan` (GCC), full Catch2 suite.
 - **TSan**: preset `tsan` (GCC) on core/runtime tests; UA client smoke is skipped because open62541 is not TSan-instrumented.
 - **Conan 2**: optional dependency provider job (`OPC_DEPENDENCY_PROVIDER=CONAN`).

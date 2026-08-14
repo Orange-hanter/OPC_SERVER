@@ -15,7 +15,10 @@ add_executable(opc_tests
   test_historian.cpp
   test_frame_log.cpp
   test_spdlog_otel.cpp
-  test_frame_replay.cpp
+    test_frame_replay.cpp
+    test_modbus_udp.cpp
+    test_ua_encryption.cpp
+    test_load_stand.cpp
 )
 
 if(TARGET opc::monitor_client)

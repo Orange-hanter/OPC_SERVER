@@ -1,6 +1,9 @@
 add_library(opc_adapters
   asio_reactor.cpp
   modbus_tcp_transport.cpp
+  modbus_udp_transport.cpp
+  modbus_protocol.cpp
+  ua_pki.cpp
   opc_ua_server.cpp
   ring_historian.cpp
   sqlite_historian.cpp

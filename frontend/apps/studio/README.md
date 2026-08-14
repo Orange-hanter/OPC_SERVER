@@ -32,6 +32,6 @@ Linux, and macOS.
 - Monitoring is read-only; Studio never sends OPC UA Write or Call requests.
 - File access is limited to paths explicitly selected by the user.
 - Project writes use a temporary file and atomic replacement.
-- Credentials are not persisted. The current sidecar supports the laboratory
-  `None/None` profile; certificate profiles require an encryption-enabled
-  open62541 build.
+- Credentials are not persisted. Certificate profiles (`Sign` /
+  `SignAndEncrypt` + `Basic256Sha256`) are forwarded to `opc-monitor`; if
+  cert/key paths are empty, the sidecar generates a self-signed client cert.

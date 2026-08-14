@@ -25,6 +25,10 @@ struct CliOptions {
     MetricsExportOption metrics_export{MetricsExportOption::None};
     std::string otlp_endpoint;  // used when metrics_export == OtlpHttp
     bool runtime_doctor{false};
+    std::string ua_cert_path;
+    std::string ua_key_path;
+    std::vector<std::string> ua_trust_paths;
+    bool ua_strict_certs{false};
     bool help{false};
     bool version{false};
     std::vector<std::string> errors;

@@ -14,8 +14,11 @@ function(_opc_find_open62541_target output_variable)
 endfunction()
 
 function(_opc_fetch_open62541)
+  find_package(OpenSSL REQUIRED)
+  # Previous trees cached this as BOOL=OFF; force the STRING OPENSSL value.
+  unset(UA_ENABLE_ENCRYPTION CACHE)
   set(UA_ENABLE_AMALGAMATION OFF CACHE BOOL "" FORCE)
-  set(UA_ENABLE_ENCRYPTION OFF CACHE BOOL "" FORCE)
+  set(UA_ENABLE_ENCRYPTION "OPENSSL" CACHE STRING "" FORCE)
   set(UA_ENABLE_HISTORIZING OFF CACHE BOOL "" FORCE)
   set(UA_ENABLE_PUBSUB OFF CACHE BOOL "" FORCE)
   set(UA_ENABLE_PUBSUB_INFORMATIONMODEL OFF CACHE BOOL "" FORCE)

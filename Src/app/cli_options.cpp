@@ -56,7 +56,8 @@ void print_usage(std::ostream& out) {
         << "             [--historian-db <path.sqlite>] [--frame-log <path>]\n"
         << "             [--log-level LEVEL] [--log-file <path>]\n"
         << "             [--metrics-export none|ostream|otlp] [--otlp-endpoint URL]\n"
-        << "             [--runtime-doctor]\n"
+        << "             [--runtime-doctor] [--ua-cert PATH] [--ua-key PATH] [--ua-trust PATH]\n"
+        << "             [--ua-strict-certs]\n"
         << "  OPC_SERVER --version\n"
         << "  OPC_SERVER --help\n\n"
         << "Options:\n"
@@ -76,6 +77,10 @@ void print_usage(std::ostream& out) {
         << "  --otlp-endpoint <url>       OTLP/HTTP metrics URL (requires -DOPC_WITH_OTLP=ON)\n"
         << "  --runtime-doctor            After start+poll, print TagStore quality findings to stderr;\n"
         << "                              with --once, exit 1 if any tag is missing or not Good\n"
+        << "  --ua-cert <path>            Server application certificate (DER/PEM) for Sign/Encrypt\n"
+        << "  --ua-key <path>             Matching private key\n"
+        << "  --ua-trust <path>           Trusted client/server cert (repeatable)\n"
+        << "  --ua-strict-certs           Reject untrusted certificates (default: accept for lab PKI)\n"
         << "  --version                   Print version and exit\n";
 }
 
@@ -101,6 +106,34 @@ CliOptions parse_cli(int argc, char const* argv[]) {
         }
         if (arg == "--runtime-doctor") {
             opts.runtime_doctor = true;
+            continue;
+        }
+        if (arg == "--ua-strict-certs") {
+            opts.ua_strict_certs = true;
+            continue;
+        }
+        if (arg == "--ua-cert") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-cert requires a path");
+                break;
+            }
+            opts.ua_cert_path = argv[++i];
+            continue;
+        }
+        if (arg == "--ua-key") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-key requires a path");
+                break;
+            }
+            opts.ua_key_path = argv[++i];
+            continue;
+        }
+        if (arg == "--ua-trust") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-trust requires a path");
+                break;
+            }
+            opts.ua_trust_paths.emplace_back(argv[++i]);
             continue;
         }
         if (arg == "--no-opcua") {

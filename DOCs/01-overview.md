@@ -25,7 +25,7 @@
 
 ## Роли системы
 
-- **Southbound (юг):** клиент Modbus TCP (приоритет); UDP — последующий этап.
+- **Southbound (юг):** клиент Modbus TCP и UDP за одним портом `IModbusTransport` (UDP — MBAP ADU в одном датаграмме).
 - **Core:** хранилище тегов (`TagStore`), диспетчер опросов, транслятор типов/семантики, историк.
 - **Northbound (север):** **OPC UA Server** — основной интерфейс для SCADA.
 - **Engineering:** проекты карт Modbus (`*.modbusproj.json`) и инструмент `opc-map` для удобной разметки.

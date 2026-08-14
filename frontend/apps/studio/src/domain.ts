@@ -102,6 +102,8 @@ export interface ConnectionProfile {
   securityMode: 'None' | 'Sign' | 'SignAndEncrypt'
   username?: string
   password?: string
+  certificatePath?: string
+  privateKeyPath?: string
 }
 
 export interface UaNode {

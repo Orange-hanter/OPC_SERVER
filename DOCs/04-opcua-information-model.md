@@ -105,7 +105,16 @@ Root
 | `Sign` | Целостность в доверенной сети |
 | `SignAndEncrypt` + `Basic256Sha256` | Промышленный контур по умолчанию |
 
-Управление сертификатами (создание, trust list, reject list) — обязательная часть эксплуатационной документации runtime; в проекте задаются `securityPolicy` / `securityMode` по умолчанию.
+Управление сертификатами (создание, trust list, reject list) — часть runtime, не core.
+
+Лабораторный `demo-plant` остаётся на `None`. Для `Sign` / `SignAndEncrypt` runtime собирает open62541 с `UA_ENABLE_ENCRYPTION=OPENSSL` и **не** откатывается на None: без encryption-сборки `start()` возвращает ошибку. Сертификат/ключ:
+
+- `--ua-cert` / `--ua-key` — готовые DER/PEM;
+- иначе (по умолчанию) самоподписанный application cert на `opcua.namespaceUri`;
+- `--ua-trust PATH` (повторяемый) — trust list;
+- `--ua-strict-certs` — отклонять недоверенные сертификаты (иначе AcceptAll для стендового PKI).
+
+Studio / `opc-monitor` принимают `securityMode` `Sign`/`SignAndEncrypt` и пути `certificate`/`privateKey`; пустые пути → самоподписанный клиентский сертификат. Username/password по-прежнему отклоняются.
 
 ## Граница с OPC Classic / DA
 

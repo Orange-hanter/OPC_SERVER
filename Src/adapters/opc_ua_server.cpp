@@ -1,13 +1,20 @@
 #include "adapters/opc_ua_server.hpp"
+#include "adapters/ua_pki.hpp"
 
 #include "domain/tag_value_util.hpp"
 
 #include <open62541/plugin/accesscontrol.h>
+#include <open62541/plugin/pki_default.h>
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
+#ifdef UA_ENABLE_ENCRYPTION
+#include <open62541/config.h>
+#endif
 
 #include <charconv>
 #include <chrono>
+#include <fstream>
+#include <iterator>
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
@@ -33,6 +40,29 @@ void log_msg(ports::ILog* log, ports::LogLevel level, std::string_view msg) {
 [[nodiscard]] domain::TimestampMs wall_now_ms() {
     using namespace std::chrono;
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+void keep_security_endpoints(UA_ServerConfig* config,
+                             UA_MessageSecurityMode mode,
+                             std::string_view policy_uri) {
+    size_t write = 0;
+    for (size_t i = 0; i < config->endpointsSize; ++i) {
+        UA_EndpointDescription& ep = config->endpoints[i];
+        UA_String want = UA_STRING_ALLOC(std::string(policy_uri).c_str());
+        const bool keep =
+            ep.securityMode == mode && UA_String_equal(&ep.securityPolicyUri, &want);
+        UA_String_clear(&want);
+        if (keep) {
+            if (write != i) {
+                config->endpoints[write] = ep;
+                UA_EndpointDescription_init(&ep);
+            }
+            ++write;
+        } else {
+            UA_EndpointDescription_clear(&ep);
+        }
+    }
+    config->endpointsSize = write;
 }
 
 struct SessionHooks {
@@ -448,8 +478,8 @@ UA_StatusCode data_source_write(UA_Server* /*server*/,
 
 }  // namespace
 
-OpcUaServer::OpcUaServer(ports::ILog* log, ports::IMetrics* metrics)
-    : log_(log), metrics_(metrics) {}
+OpcUaServer::OpcUaServer(ports::ILog* log, ports::IMetrics* metrics, OpcUaSecurityOptions security)
+    : log_(log), metrics_(metrics), security_(std::move(security)) {}
 
 OpcUaServer::~OpcUaServer() {
     stop();
@@ -465,10 +495,13 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
     }
     project_ = std::move(project);
 
-    if (project_->opcua.security_policy != project::SecurityPolicy::None ||
-        project_->opcua.security_mode != project::SecurityMode::None) {
-        log_msg(log_, ports::LogLevel::Warn,
-                "security Sign/Encrypt requested but stage-3 uses None; continuing with None");
+    const bool want_secure = project_->opcua.security_mode != project::SecurityMode::None;
+    if (want_secure && !ua_encryption_built()) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::NotImplemented,
+            "project requests Sign/Encrypt but open62541 was built without UA_ENABLE_ENCRYPTION",
+            "adapters.opcua",
+            false});
     }
 
     server_ = UA_Server_new();
@@ -498,12 +531,83 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
         return rest.empty() || rest == "0.0.0.0" || rest == "[::]" || rest == "::";
     }();
 
-    auto status = UA_ServerConfig_setMinimal(config, port, nullptr);
+    auto status = UA_STATUSCODE_GOOD;
+    if (!want_secure) {
+        status = UA_ServerConfig_setMinimal(config, port, nullptr);
+    } else {
+#ifdef UA_ENABLE_ENCRYPTION
+        const auto uri = project_->opcua.namespace_uri.empty() ? std::string{"urn:opc-server:application"}
+                                                               : project_->opcua.namespace_uri;
+        auto material = load_or_create_application_cert(uri, security_, log_);
+        if (!material) {
+            UA_Server_delete(server_);
+            server_ = nullptr;
+            return std::unexpected(material.error());
+        }
+        UA_ByteString certificate{};
+        certificate.length = material->first.size();
+        certificate.data = material->first.data();
+        UA_ByteString private_key{};
+        private_key.length = material->second.size();
+        private_key.data = material->second.data();
+
+        std::vector<std::vector<std::uint8_t>> trust_store;
+        std::vector<UA_ByteString> trust_list;
+        bool trust_ok = true;
+        for (const auto& path : security_.trust_list) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) {
+                trust_ok = false;
+                break;
+            }
+            trust_store.emplace_back(std::istreambuf_iterator<char>(in),
+                                     std::istreambuf_iterator<char>());
+        }
+        if (!trust_ok) {
+            UA_Server_delete(server_);
+            server_ = nullptr;
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::InvalidArgument,
+                "cannot read --ua-trust certificate",
+                "adapters.opcua",
+                false});
+        }
+        trust_list.resize(trust_store.size());
+        for (std::size_t i = 0; i < trust_store.size(); ++i) {
+            trust_list[i].length = trust_store[i].size();
+            trust_list[i].data = trust_store[i].empty() ? nullptr : trust_store[i].data();
+        }
+
+        status = UA_ServerConfig_setDefaultWithSecurityPolicies(
+            config, port, &certificate, &private_key,
+            trust_list.empty() ? nullptr : trust_list.data(), trust_list.size(),
+            nullptr, 0, nullptr, 0);
+        if (status == UA_STATUSCODE_GOOD) {
+            if (security_.accept_untrusted) {
+                UA_CertificateVerification_AcceptAll(&config->secureChannelPKI);
+                UA_CertificateVerification_AcceptAll(&config->sessionPKI);
+            }
+            const auto mode = static_cast<UA_MessageSecurityMode>(
+                ua_message_security_mode(project_->opcua.security_mode));
+            const char* policy = ua_security_policy_uri(project_->opcua.security_policy);
+            if (project_->opcua.security_policy == project::SecurityPolicy::None) {
+                policy = ua_security_policy_uri(project::SecurityPolicy::Basic256Sha256);
+            }
+            keep_security_endpoints(config, mode, policy);
+            if (config->endpointsSize == 0) {
+                status = UA_STATUSCODE_BADSECURITYCHECKSFAILED;
+            }
+        }
+#else
+        status = UA_STATUSCODE_BADINTERNALERROR;
+#endif
+    }
     if (status != UA_STATUSCODE_GOOD) {
         UA_Server_delete(server_);
         server_ = nullptr;
         return std::unexpected(domain::Error{domain::ErrorCode::Internal,
-                                             "UA_ServerConfig_setMinimal failed",
+                                             want_secure ? "UA encrypted config failed"
+                                                         : "UA_ServerConfig_setMinimal failed",
                                              "adapters.opcua",
                                              false});
     }

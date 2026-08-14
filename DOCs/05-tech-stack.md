@@ -38,7 +38,7 @@
 
 | Компонент | Выбор |
 |-----------|--------|
-| Ядро UA | **open62541** (C, высокая производительность, широкое покрытие сервисов) |
+| Ядро UA | **open62541** 1.4.11 FetchContent (`UA_ENABLE_ENCRYPTION=OPENSSL`) или Conan 1.5 (`encryption=openssl`) |
 | C++ слой | Тонкая обёртка на C++26 **или** [open62541pp](https://github.com/open62541pp/open62541pp) как база |
 
 Сервер использует Information Model из проекта; Subscriptions — через API open62541.
@@ -47,10 +47,10 @@
 
 | Компонент | Выбор |
 |-----------|--------|
-| Клиент | Sync POSIX **Modbus TCP** за `IModbusTransport`, вызывается **только** со strand endpoint (инкремент A). Asio-native async TCP — позже |
+| Клиент | Sync POSIX **Modbus TCP** и **Modbus UDP** за `IModbusTransport`, вызов **только** со strand endpoint. Asio-native async TCP — вне ядра |
 | Legacy | submodule `Lib/modbuspp` — **не ядро**; кандидат на удаление/замену |
 
-UDP — второй этап того же абстрактного transport-интерфейса.
+UDP — `ModbusUdpTransport`: тот же MBAP ADU, один запрос/ответ на датаграмму (`endpoints[].transport = "udp"`).
 
 ## Конфигурация и проекты карт
 
@@ -66,7 +66,7 @@ UDP — второй этап того же абстрактного transport-�
 | Компонент | Выбор |
 |-----------|--------|
 | Логи | **spdlog** (async logger, уровни, sink в файл/stdout) |
-| Метрики/трассы | **OpenTelemetry** C++ SDK: metrics including `ua_sessions` / `tag_quality`; traces poll/write — инкремент D/later |
+| Метрики/трассы | **OpenTelemetry** C++ SDK: metrics including `ua_sessions` / `tag_quality`; traces poll/write — хвост этапа 5 |
 
 ## Тестирование
 

@@ -27,8 +27,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   dispatcher `modbus_poll_rtt_ms` histogram
 - Stage 5 tests (`tests/test_historian.cpp`, `tests/test_frame_log.cpp`)
 - Asio increment A (standalone Asio 1.32, strand-per-endpoint, reconnect backoff)
-- Increment C: `opc-map import-csv` / `gen-nodeset`, device profile expand at load,
-  `OPC_SERVER --runtime-doctor` (TagStore snapshot: missing / not Good)
+- Increment D: open62541 OpenSSL encryption (`Sign`/`SignAndEncrypt` fail-closed),
+  Studio/`opc-monitor` certificate profile, Modbus UDP adapter, Catch2 load stand
+  (2 endpoints × N tags + UA subscription smoke)
 - Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
 - Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - `opc-map doctor`: register overlaps, unpolled tags, sparse/gappy poll blocks
@@ -48,8 +49,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Roadmap snapshot (2026-08-14): инкременты A–C закрыты (~90% чеклиста этапов 0–7);
-  живой backlog и процент — `DOCs/tasks.md`; дальше D (security/нагрузка/UDP)
+- Roadmap snapshot (2026-08-14): инкременты A–D закрыты (~98% чеклиста этапов 0–7);
+  живой backlog и процент — `DOCs/tasks.md`; открыт хвост этапа 5 (OTLP/traces)
+- FetchContent/CI: `libssl-dev`, `UA_ENABLE_ENCRYPTION=OPENSSL`; Conan `open62541:encryption=openssl`
+- CLI `--ua-cert` / `--ua-key` / `--ua-trust` / `--ua-strict-certs`
 
 ### Fixed
 

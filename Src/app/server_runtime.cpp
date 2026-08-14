@@ -2,6 +2,7 @@
 
 #include "adapters/asio_reactor.hpp"
 #include "adapters/modbus_tcp_transport.hpp"
+#include "adapters/modbus_udp_transport.hpp"
 #include "ports/i_opc_ua_facade.hpp"
 #include "project/load.hpp"
 
@@ -376,7 +377,18 @@ load_project_or_error(const std::string& path, ports::ILog* log) {
 }
 
 TransportFactory default_tcp_transport_factory(ports::IFrameLog* frame_log) {
+    return default_transport_factory(frame_log);
+}
+
+TransportFactory default_transport_factory(ports::IFrameLog* frame_log) {
     return [frame_log](const project::Endpoint& endpoint) -> std::unique_ptr<ports::IModbusTransport> {
+        if (endpoint.transport == project::Transport::Udp) {
+            return std::make_unique<adapters::ModbusUdpTransport>(adapters::ModbusUdpTransportOptions{
+                .response_timeout_ms = endpoint.response_timeout_ms,
+                .frame_log = frame_log,
+                .endpoint_id = endpoint.id,
+            });
+        }
         return std::make_unique<adapters::ModbusTcpTransport>(adapters::ModbusTcpTransportOptions{
             .response_timeout_ms = endpoint.response_timeout_ms,
             .frame_log = frame_log,

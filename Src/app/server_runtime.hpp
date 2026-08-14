@@ -111,5 +111,6 @@ private:
 load_project_or_error(const std::string& path, ports::ILog* log);
 
 TransportFactory default_tcp_transport_factory(ports::IFrameLog* frame_log = nullptr);
+TransportFactory default_transport_factory(ports::IFrameLog* frame_log = nullptr);
 
 }  // namespace opc::app

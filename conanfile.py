@@ -25,7 +25,10 @@ class OpcServerConan(ConanFile):
         "DOCs/schemas/*",
         "LICENSE",
     )
-    default_options = {"open62541/*:shared": False}
+    default_options = {
+        "open62541/*:shared": False,
+        "open62541/*:encryption": "openssl",
+    }
 
     def requirements(self):
         self.requires("open62541/1.5.0")

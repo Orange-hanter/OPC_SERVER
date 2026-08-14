@@ -143,7 +143,12 @@ bool Application::init(const CliOptions& options) {
 
     std::unique_ptr<ports::IOpcUaFacade> opcua;
     if (options_.enable_opcua) {
-        opcua = std::make_unique<adapters::OpcUaServer>(log_.get(), metrics_.get());
+        adapters::OpcUaSecurityOptions pki;
+        pki.certificate_path = options_.ua_cert_path;
+        pki.private_key_path = options_.ua_key_path;
+        pki.trust_list = options_.ua_trust_paths;
+        pki.accept_untrusted = !options_.ua_strict_certs;
+        opcua = std::make_unique<adapters::OpcUaServer>(log_.get(), metrics_.get(), std::move(pki));
     }
 
     auto runtime = ServerRuntime::create(ServerRuntimeDeps{
@@ -153,7 +158,7 @@ bool Application::init(const CliOptions& options) {
         .log = log_.get(),
         .historian = historian_.get(),
         .frame_log = frame_log_.get(),
-        .transport_factory = default_tcp_transport_factory(frame_log_.get()),
+        .transport_factory = default_transport_factory(frame_log_.get()),
         .opcua = std::move(opcua),
     });
     if (!runtime) {

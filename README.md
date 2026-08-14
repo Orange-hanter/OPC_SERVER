@@ -4,7 +4,7 @@
 
 ## Описание проекта
 
-`OPC_SERVER` собирает данные с полевых устройств по **Modbus TCP**, приводит их к инженерным тегам (типы, byte order, scale/offset) и отдаёт верхнему уровню через **OPC UA**. Цель — прозрачный, тестируемый контур между PLC/IoT и SCADA без смешивания Classic/DA в ядре.
+`OPC_SERVER` собирает данные с полевых устройств по **Modbus TCP/UDP**, приводит их к инженерным тегам (типы, byte order, scale/offset) и отдаёт верхнему уровню через **OPC UA**. Цель — прозрачный, тестируемый контур между PLC/IoT и SCADA без смешивания Classic/DA в ядре.
 
 Проект ориентирован на:
 
@@ -15,9 +15,9 @@
 
 | Слой | Роль |
 |------|------|
-| Southbound | Modbus TCP (UDP позже) |
+| Southbound | Modbus TCP и UDP (`IModbusTransport`) |
 | Core | Dispatcher, Translator, TagStore |
-| Northbound | OPC UA Server (Read / Write / Subscriptions, security None) |
+| Northbound | OPC UA Server (Read / Write / Subscriptions; None или Sign/SignAndEncrypt) |
 | Engineering | Tauri Studio, `opc-map`, схемы и примеры карт |
 
 Норматив: [DOCs/08-engineering-standards.md](DOCs/08-engineering-standards.md), [ADR](DOCs/adr/README.md).
@@ -26,12 +26,12 @@
 
 ## Возможности
 
-**Сейчас (лабораторный MVP + reactor):** проекты карт + `opc-map` (validate/doctor/migrate-legacy/import-csv/gen-nodeset),
-TagStore/Translator/Dispatcher, sync Modbus TCP за Asio strand-per-endpoint,
-`ServerRuntime`, **OPC UA Read/Write/Subscriptions** (DataSource, security None),
+**Сейчас (лабораторный MVP + инкременты A–D):** проекты карт + `opc-map` (validate/doctor/migrate-legacy/import-csv/gen-nodeset),
+TagStore/Translator/Dispatcher, sync Modbus TCP/UDP за Asio strand-per-endpoint,
+`ServerRuntime`, **OPC UA Read/Write/Subscriptions** (DataSource; `None` или Sign/SignAndEncrypt),
 Diagnostics, historian/frame-log, spdlog/OTel metrics, **OPC Engineering Studio**.
 
-**Следующее:** SignAndEncrypt и нагрузочный стенд (инкремент D в [roadmap](DOCs/07-roadmap.md)).
+**Следующее:** OTLP default-on / traces poll-write (хвост этапа 5 в [roadmap](DOCs/07-roadmap.md)).
 
 OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
 

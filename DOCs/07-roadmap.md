@@ -2,15 +2,15 @@
 
 Документация в `DOCs/` задаёт целевое состояние. Ниже — **снимок факта** и **порядок следующих инкрементов**. Живой backlog и процент выполнения: [tasks.md](tasks.md).
 
-Снимок: **2026-08-14**. Инкременты A (Asio), B (CI/schema/FC15) и C (карты: CSV/nodeset/профили/runtime doctor) закрыты в этой линии веток. Сводка задач и процент: [tasks.md](tasks.md).
+Снимок: **2026-08-14**. Инкременты A (Asio), B (CI/schema/FC15), C (карты: CSV/nodeset/профили/runtime doctor) и D (SignAndEncrypt, UDP, load stand) закрыты в этой линии веток. Сводка задач и процент: [tasks.md](tasks.md).
 
-**Выполнение roadmap ядра (этапы 0–7, без Classic/DA):** ~90% пунктов чеклиста. Лабораторный MVP — 100%. Этап 7 / инкремент D — 0%.
+**Выполнение roadmap ядра (этапы 0–7, без Classic/DA):** ~98% пунктов чеклиста. Лабораторный MVP — 100%. Этап 7 / инкремент D — закрыт (с оговорками в tasks.md).
 
 ## Где мы сейчас
 
 Лабораторный контур **Modbus TCP → TagStore → OPC UA (Read/Write/Subscriptions)** работает end-to-end. Рядом: historian/frame-log, spdlog/OTel metrics, `opc-map` + doctor, Tauri Studio (read-only monitor). **Asio reactor** (strand-per-endpoint, `steady_timer`, reconnect backoff) закрывает anti-DoD `sleep` из [ADR-0002](adr/0002-concurrency-model.md).
 
-Это **ещё не** промышленный runtime: transport на strand остаётся блокирующим POSIX TCP, security OPC UA — None, OTLP/traces — opt-in/будущее.
+Это **ещё не** полный промышленный runtime: transport на strand остаётся блокирующим POSIX, demo-plant security — None (SignAndEncrypt доступен по проекту), OTLP/traces — opt-in/хвост этапа 5.
 
 | Контур | Состояние |
 |--------|-----------|
@@ -30,9 +30,11 @@
 | Reconnect backoff + Bad/NoCommunication на endpoint | Есть (per-endpoint `mark_endpoint_bad`, не глобальный `mark_stale_before`) |
 | TSan CI / ASan CI | Есть — инкремент B |
 | `import-csv` / `gen-nodeset` / профили устройств / runtime doctor | Есть — инкремент C |
-| Sign / SignAndEncrypt | Нет |
+| Sign / SignAndEncrypt | Есть (fail-closed; lab demo остаётся None) |
+| Modbus UDP | Есть (`endpoints[].transport = "udp"`) |
+| Load stand | Есть (Catch2: 2 endpoints × N tags + UA sub smoke) |
 
-Тесты: 59 Catch2 cases (project, doctor, import-csv, gen-nodeset, runtime doctor, core, UA smoke, historian, frame replay, opc-monitor) + Studio Vitest. Presets `asan` / `tsan` гоняются в CI (инкремент B).
+Тесты: Catch2 (project, doctor, import-csv, gen-nodeset, runtime doctor, core, UA smoke/encryption, UDP, load stand, historian, frame replay, opc-monitor) + Studio Vitest. Presets `asan` / `tsan` гоняются в CI (инкремент B).
 
 ## Этапы (факт)
 
@@ -123,9 +125,9 @@
 
 ### Этап 7 — Промышленное укрепление
 
-- [ ] Sign / SignAndEncrypt, сертификаты (open62541 encryption build)
-- [ ] Нагрузочные тесты (число тегов, RTT)
-- [ ] UDP Modbus при необходимости
+- [x] Sign / SignAndEncrypt, сертификаты (open62541 encryption build)
+- [x] Нагрузочные тесты (число тегов, RTT)
+- [x] UDP Modbus при необходимости
 - (Опционально) исследование внешнего моста UA↔Classic/DA — **не** ядро
 
 ## Следующие инкременты (порядок работ)
@@ -166,16 +168,18 @@
 3. Профили устройств: при load, до validate, пустой `device.tags` копирует `deviceProfiles[].tags`; непустой — union, instance побеждает по `name`.
 4. Runtime doctor: `opc::core::runtime_doctor` + `OPC_SERVER --runtime-doctor` (со `--once` — stderr, exit 1 при Error). Не смешивается со static `opc-map doctor`.
 
-**Не делалось в C:** SignAndEncrypt, нагрузочные тесты, UDP.
+**Не делалось в C:** SignAndEncrypt, нагрузочные тесты, UDP — перенесены в D.
 
-### D — Промышленный security и нагрузка (этап 7)
+### D — Промышленный security и нагрузка (этап 7) — закрыт
 
-Только когда A закрыт: иначе SignAndEncrypt на `sleep`-цикле не имеет смысла как «промышленный» runtime.
+**Состав (сделано):**
 
-- open62541 с encryption; security mode из проекта не игнорировать.
-- Studio/opc-monitor: сертификатный профиль (сейчас явно None).
-- Нагрузочный стенд: теги × endpoints × UA subscriptions.
-- UDP transport — отдельный адаптер за тем же `IModbusTransport`.
+1. open62541 с `UA_ENABLE_ENCRYPTION=OPENSSL`; `opcua.securityMode` Sign/SignAndEncrypt не игнорируется (fail-closed без encryption-сборки).
+2. Studio / `opc-monitor`: сертификатный профиль (`certificate`/`privateKey`, самоподпись если пути пустые).
+3. Нагрузочный стенд Catch2: 2 endpoints × N tags Fake poll + UA subscription smoke.
+4. `ModbusUdpTransport` за `IModbusTransport`, выбор в `default_transport_factory`.
+
+**Оговорки:** demo-plant остаётся None; PKI AcceptAll без `--ua-strict-certs`; load stand — smoke, не профилировщик.
 
 ## Критерии готовности
 
@@ -201,9 +205,9 @@ TSan/ASan в CI, JSON Schema engine, FC15, метрики `ua_sessions` / `tag_q
 
 `opc-map import-csv` / `gen-nodeset`, expand `deviceProfiles` при load, `OPC_SERVER --runtime-doctor`.
 
-### Следующий milestone: инкремент D
+### Milestone: инкремент D — выполнен
 
-SignAndEncrypt, нагрузочный стенд, UDP transport.
+SignAndEncrypt (fail-closed), сертификатный профиль Studio/opc-monitor, load stand, UDP transport.
 
 ## Связь с текущим репозиторием
 
@@ -212,7 +216,7 @@ SignAndEncrypt, нагрузочный стенд, UDP transport.
 | Asio `io_context` + strand-per-endpoint; sync TCP на strand | Asio-native async Modbus TCP (по желанию) |
 | `reconnectDelayMs` backoff на strand | — |
 | `opc-map` validate (JSON Schema + semantic) / doctor / migrate / import-csv / gen-nodeset | — |
-| Studio + opc-monitor, security None | SignAndEncrypt + cert profile |
+| Studio + opc-monitor, cert profile Sign/SignAndEncrypt | username token / industrial CA |
 | OTel metrics including `ua_sessions` / `tag_quality`, OTLP opt-in | traces poll/write; OTLP в CI по флагу |
 | GCC CI + Conan + Studio matrix + ASan/TSan | — |
 

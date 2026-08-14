@@ -45,6 +45,8 @@ struct ConnectionProfile {
     security_mode: String,
     username: Option<String>,
     password: Option<String>,
+    certificate_path: Option<String>,
+    private_key_path: Option<String>,
 }
 
 fn validate_project_path(path: &Path) -> Result<(), String> {
@@ -327,10 +329,27 @@ async fn monitor_connect(
     if profile.endpoint_url.len() > 2048 || !profile.endpoint_url.starts_with("opc.tcp://") {
         return Err("Endpoint must be an opc.tcp URL".to_owned());
     }
-    if profile.security_policy != "None" || profile.security_mode != "None" {
-        return Err(
-            "Encrypted OPC UA profiles require a certificate-enabled open62541 build".to_owned(),
-        );
+    if profile.security_policy != "None"
+        && profile.security_policy != "Basic256Sha256"
+    {
+        return Err("Unsupported security policy".to_owned());
+    }
+    if profile.security_mode != "None"
+        && profile.security_mode != "Sign"
+        && profile.security_mode != "SignAndEncrypt"
+    {
+        return Err("Unsupported security mode".to_owned());
+    }
+    if profile
+        .certificate_path
+        .as_deref()
+        .is_some_and(|path| path.len() > 4096)
+        || profile
+            .private_key_path
+            .as_deref()
+            .is_some_and(|path| path.len() > 4096)
+    {
+        return Err("Certificate paths are too long".to_owned());
     }
     if profile
         .username
@@ -346,7 +365,14 @@ async fn monitor_connect(
     send_monitor_command(
         &app,
         &state,
-        json!({ "command": "connect", "endpoint": profile.endpoint_url }),
+        json!({
+            "command": "connect",
+            "endpoint": profile.endpoint_url,
+            "securityPolicy": profile.security_policy,
+            "securityMode": profile.security_mode,
+            "certificate": profile.certificate_path,
+            "privateKey": profile.private_key_path,
+        }),
     )
     .await
 }

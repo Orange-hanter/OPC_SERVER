@@ -6,6 +6,7 @@
 #include "ports/i_opc_ua_facade.hpp"
 #include "ports/i_tag_store.hpp"
 #include "project/types.hpp"
+#include "adapters/ua_pki.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -25,12 +26,16 @@ namespace opc::adapters {
 
 struct OpcUaNodeContext;
 
-/// OPC UA server (open62541). Security None for lab.
+/// OPC UA server (open62541). Honors project securityMode (None / Sign / SignAndEncrypt).
 /// Reads come from ITagStore via DataSource; writes enqueue via OpcUaWriteHandler.
 class OpcUaServer final : public ports::IOpcUaFacade {
 public:
-    explicit OpcUaServer(ports::ILog* log = nullptr, ports::IMetrics* metrics = nullptr);
+    explicit OpcUaServer(ports::ILog* log = nullptr,
+                         ports::IMetrics* metrics = nullptr,
+                         OpcUaSecurityOptions security = {});
     ~OpcUaServer() override;
+
+    void set_security_options(OpcUaSecurityOptions security) { security_ = std::move(security); }
 
     OpcUaServer(const OpcUaServer&) = delete;
     OpcUaServer& operator=(const OpcUaServer&) = delete;
@@ -76,6 +81,7 @@ private:
 
     ports::ILog* log_{nullptr};
     ports::IMetrics* metrics_{nullptr};
+    OpcUaSecurityOptions security_{};
     UA_Server* server_{nullptr};
     std::shared_ptr<const project::Project> project_;
     std::string endpoint_url_;

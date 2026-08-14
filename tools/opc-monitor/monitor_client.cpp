@@ -4,13 +4,21 @@
 #include <open62541/client_config_default.h>
 #include <open62541/client_highlevel.h>
 #include <open62541/client_subscriptions.h>
+#ifdef UA_ENABLE_ENCRYPTION
+#include <open62541/plugin/create_certificate.h>
+#include <open62541/plugin/log_stdout.h>
+#include <open62541/plugin/pki_default.h>
+#endif
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
+#include <fstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace opc::monitor {
 namespace {
@@ -172,6 +180,76 @@ struct MonitorClient::Impl {
         config->timeout = 3000;
         config->connectivityCheckInterval = 2000;
         config->clientContext = this;
+        security_ok = true;
+        apply_security(config);
+    }
+
+#ifdef UA_ENABLE_ENCRYPTION
+    static UA_ByteString bytes_from_file(const std::string& path) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) {
+            return UA_BYTESTRING_NULL;
+        }
+        const std::vector<char> buf((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        UA_ByteString out;
+        UA_ByteString_allocBuffer(&out, buf.size());
+        if (out.data != nullptr && !buf.empty()) {
+            std::memcpy(out.data, buf.data(), buf.size());
+        }
+        return out;
+    }
+#endif
+
+    void apply_security(UA_ClientConfig* config) {
+        if (security_mode == "None" || security_mode.empty()) {
+            return;
+        }
+#ifndef UA_ENABLE_ENCRYPTION
+        security_ok = false;
+        emit_error("opc-monitor was built without UA encryption support");
+        return;
+#else
+        UA_ByteString cert = UA_BYTESTRING_NULL;
+        UA_ByteString key = UA_BYTESTRING_NULL;
+        if (!certificate_path.empty() && !private_key_path.empty()) {
+            cert = bytes_from_file(certificate_path);
+            key = bytes_from_file(private_key_path);
+        } else {
+            UA_String subject[3] = {UA_STRING_STATIC("C=RU"), UA_STRING_STATIC("O=OPC_SERVER"),
+                                    UA_STRING_STATIC("CN=opc-monitor")};
+            UA_String san[2] = {UA_STRING_STATIC("DNS:localhost"),
+                                UA_STRING_STATIC("URI:urn:opc-server:monitor")};
+            const auto gen = UA_CreateCertificate(UA_Log_Stdout, subject, 3, san, 2,
+                                                  UA_CERTIFICATEFORMAT_DER, nullptr, &key, &cert);
+            if (gen != UA_STATUSCODE_GOOD) {
+                security_ok = false;
+                emit_error(std::string("failed to generate monitor certificate: ") +
+                               UA_StatusCode_name(gen),
+                           gen);
+                return;
+            }
+        }
+        UA_String_clear(&config->clientDescription.applicationUri);
+        config->clientDescription.applicationUri = UA_STRING_ALLOC("urn:opc-server:monitor");
+        const auto st =
+            UA_ClientConfig_setDefaultEncryption(config, cert, key, nullptr, 0, nullptr, 0);
+        UA_ByteString_clear(&cert);
+        UA_ByteString_clear(&key);
+        if (st != UA_STATUSCODE_GOOD) {
+            security_ok = false;
+            emit_error(std::string("failed to set client encryption: ") + UA_StatusCode_name(st), st);
+            return;
+        }
+        config->securityMode = (security_mode == "Sign") ? UA_MESSAGESECURITYMODE_SIGN
+                                                         : UA_MESSAGESECURITYMODE_SIGNANDENCRYPT;
+        if (security_policy == "Basic256Sha256" || security_policy == "None" ||
+            security_policy.empty()) {
+            UA_String_clear(&config->securityPolicyUri);
+            config->securityPolicyUri =
+                UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
+        }
+        UA_CertificateVerification_AcceptAll(&config->certificateVerification);
+#endif
     }
 
     void emit(nlohmann::json event) {
@@ -270,6 +348,11 @@ struct MonitorClient::Impl {
     }
 
     bool establish(const nlohmann::json* command = nullptr) {
+        if (!security_ok) {
+            connected = false;
+            emit_connection("disconnected", UA_STATUSCODE_BADSECURITYCHECKSFAILED, command);
+            return false;
+        }
         const auto status = UA_Client_connect(client, endpoint.c_str());
         if (status != UA_STATUSCODE_GOOD) {
             connected = false;
@@ -295,6 +378,10 @@ struct MonitorClient::Impl {
         }
         close(false);
         endpoint = command["endpoint"].get<std::string>();
+        security_mode = command.value("securityMode", "None");
+        security_policy = command.value("securityPolicy", "None");
+        certificate_path = command.value("certificate", "");
+        private_key_path = command.value("privateKey", "");
         want_connected = true;
         reset_client();
         establish(&command);
@@ -550,6 +637,11 @@ struct MonitorClient::Impl {
     EventSink sink;
     UA_Client* client{nullptr};
     std::string endpoint;
+    std::string security_mode{"None"};
+    std::string security_policy{"None"};
+    std::string certificate_path;
+    std::string private_key_path;
+    bool security_ok{true};
     bool connected{false};
     bool want_connected{false};
     UA_UInt32 server_subscription_id{0};

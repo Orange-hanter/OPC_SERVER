@@ -5,22 +5,24 @@
 
 #include <cstdint>
 #include <mutex>
+#include <netinet/in.h>
 #include <string>
 #include <vector>
 
 namespace opc::adapters {
 
-struct ModbusTcpTransportOptions {
+struct ModbusUdpTransportOptions {
     int response_timeout_ms{1000};
     ports::IFrameLog* frame_log{nullptr};
     std::string endpoint_id;
 };
 
-/// Synchronous Modbus TCP client (call only from one endpoint strand — ADR-0002/0007).
-class ModbusTcpTransport final : public ports::IModbusTransport {
+/// Modbus UDP (MBAP ADU in one datagram). Call only from one endpoint strand.
+class ModbusUdpTransport final : public ports::IModbusTransport {
 public:
-    explicit ModbusTcpTransport(int response_timeout_ms = 1000);
-    explicit ModbusTcpTransport(ModbusTcpTransportOptions options);
+    explicit ModbusUdpTransport(int response_timeout_ms = 1000);
+    explicit ModbusUdpTransport(ModbusUdpTransportOptions options);
+    ~ModbusUdpTransport() override;
 
     domain::Result<void> connect(const ports::EndpointAddress& endpoint) override;
     void close() override;
@@ -54,9 +56,6 @@ public:
                          std::uint16_t address,
                          std::span<const std::uint8_t> values) override;
 
-    void set_frame_log(ports::IFrameLog* log) { frame_log_ = log; }
-    void set_endpoint_id(std::string id) { endpoint_id_ = std::move(id); }
-
 private:
     domain::Result<std::vector<std::uint8_t>>
     transact(std::uint8_t unit, std::span<const std::uint8_t> pdu);
@@ -66,6 +65,7 @@ private:
     int fd_{-1};
     int response_timeout_ms_{1000};
     std::uint16_t transaction_id_{1};
+    sockaddr_in peer_{};
     mutable std::mutex mutex_;
     ports::IFrameLog* frame_log_{nullptr};
     std::string endpoint_id_;
