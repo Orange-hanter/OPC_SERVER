@@ -82,16 +82,20 @@ domain::Result<void> ServerRuntime::start() {
         }
         auto* raw = transport.get();
         auto conn = raw->connect({endpoint.host, endpoint.port});
+        auto& poll_state = endpoint_poll_state_[endpoint.id];
+        if (!poll_state) {
+            poll_state = std::make_unique<EndpointPollState>();
+        }
         if (!conn) {
             log_msg(log_, ports::LogLevel::Warn,
                     "connect failed for endpoint " + endpoint.id + ": " + conn.error().message);
             dispatcher_->mark_endpoint_bad(endpoint.id, domain::QualityReason::NoCommunication,
                                            clock_->now_ms());
-            next_reconnect_ms_[endpoint.id] =
-                clock_->now_ms() + std::max(0, endpoint.reconnect_delay_ms);
+            poll_state->next_reconnect_ms.store(clock_->now_ms() +
+                                                std::max(0, endpoint.reconnect_delay_ms));
         } else {
             log_msg(log_, ports::LogLevel::Info, "connected endpoint " + endpoint.id);
-            next_reconnect_ms_.erase(endpoint.id);
+            poll_state->next_reconnect_ms.store(0);
         }
         dispatcher_->bind_transport(endpoint.id, raw);
         transports_.emplace(endpoint.id, std::move(transport));
@@ -197,7 +201,12 @@ void ServerRuntime::tick_endpoint(const std::string& endpoint_id) {
     if (t_it == transports_.end() || t_it->second == nullptr) {
         return;
     }
-    if (poll_inflight_[endpoint_id]) {
+    auto state_it = endpoint_poll_state_.find(endpoint_id);
+    if (state_it == endpoint_poll_state_.end() || state_it->second == nullptr) {
+        return;
+    }
+    auto& state = *state_it->second;
+    if (state.inflight.exchange(true)) {
         if (metrics_ != nullptr) {
             metrics_->counter_add("modbus_poll_overruns");
         }
@@ -209,17 +218,17 @@ void ServerRuntime::tick_endpoint(const std::string& endpoint_id) {
     const int delay_ms = ep != nullptr ? std::max(0, ep->reconnect_delay_ms) : 2000;
 
     if (!transport.is_connected()) {
-        const auto next = next_reconnect_ms_.find(endpoint_id);
-        if (next != next_reconnect_ms_.end() && now < next->second) {
+        const auto next = state.next_reconnect_ms.load();
+        if (next != 0 && now < next) {
+            state.inflight.store(false);
             return;
         }
     }
 
-    poll_inflight_[endpoint_id] = true;
     dispatcher_->poll_due_async(
         endpoint_id, now,
-        [this, endpoint_id, delay_ms](domain::Result<void> r) {
-            poll_inflight_[endpoint_id] = false;
+        [this, endpoint_id, delay_ms, &state](domain::Result<void> r) {
+            state.inflight.store(false);
             auto t_it = transports_.find(endpoint_id);
             if (t_it == transports_.end() || t_it->second == nullptr) {
                 return;
@@ -230,9 +239,9 @@ void ServerRuntime::tick_endpoint(const std::string& endpoint_id) {
             if (!transport.is_connected()) {
                 dispatcher_->mark_endpoint_bad(endpoint_id, domain::QualityReason::NoCommunication,
                                                now);
-                next_reconnect_ms_[endpoint_id] = now + delay_ms;
+                state.next_reconnect_ms.store(now + delay_ms);
             } else {
-                next_reconnect_ms_.erase(endpoint_id);
+                state.next_reconnect_ms.store(0);
             }
 
             if (!r) {
@@ -242,7 +251,7 @@ void ServerRuntime::tick_endpoint(const std::string& endpoint_id) {
                     transport.close();
                     dispatcher_->mark_endpoint_bad(
                         endpoint_id, domain::QualityReason::NoCommunication, now);
-                    next_reconnect_ms_[endpoint_id] = now + delay_ms;
+                    state.next_reconnect_ms.store(now + delay_ms);
                 }
             }
 
@@ -268,6 +277,9 @@ domain::Result<void> ServerRuntime::start_reactor(ReactorOptions options) {
     reactor_ = std::make_unique<adapters::AsioReactor>(choose_worker_count());
     for (const auto& endpoint : project_->endpoints) {
         reactor_->ensure_strand(endpoint.id);
+        if (!endpoint_poll_state_.contains(endpoint.id) || !endpoint_poll_state_[endpoint.id]) {
+            endpoint_poll_state_[endpoint.id] = std::make_unique<EndpointPollState>();
+        }
         auto executor = reactor_->executor_for(endpoint.id);
         transport_executors_[endpoint.id] = executor;
         if (auto t = transports_.find(endpoint.id); t != transports_.end() && t->second) {
@@ -343,8 +355,7 @@ void ServerRuntime::stop() {
         reactor_->stop();
         reactor_.reset();
     }
-    poll_inflight_.clear();
-    next_reconnect_ms_.clear();
+    endpoint_poll_state_.clear();
     for (auto& [id, transport] : transports_) {
         if (transport) {
             transport->set_completion_executor(nullptr);

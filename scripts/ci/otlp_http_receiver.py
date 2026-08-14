@@ -54,6 +54,7 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=4318)
     parser.add_argument("--receipt", required=True, help="JSONL receipt path")
+    parser.add_argument("--ready", default="", help="Optional readiness file touched after bind")
     args = parser.parse_args()
 
     Handler.receipt_path = Path(args.receipt)
@@ -63,6 +64,10 @@ def main() -> int:
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"otlp_http_receiver listening on http://{args.host}:{args.port}", flush=True)
     print(f"receipt={Handler.receipt_path}", flush=True)
+    if args.ready:
+        ready = Path(args.ready)
+        ready.parent.mkdir(parents=True, exist_ok=True)
+        ready.write_text("ready\n", encoding="utf-8")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

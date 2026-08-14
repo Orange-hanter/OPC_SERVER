@@ -15,6 +15,7 @@
 #include "ports/i_tracer.hpp"
 #include "project/types.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -85,6 +86,13 @@ public:
 private:
     explicit ServerRuntime(ServerRuntimeDeps deps);
 
+    /// Per-endpoint poll bookkeeping. Keys are fixed after start_reactor(); only atomics mutate.
+    struct EndpointPollState {
+        std::atomic<bool> inflight{false};
+        /// 0 = no reconnect backoff armed.
+        std::atomic<domain::TimestampMs> next_reconnect_ms{0};
+    };
+
     std::shared_ptr<const project::Project> project_;
     core::RuntimeIndex index_;
     core::TagStore tag_store_;
@@ -98,10 +106,9 @@ private:
     TransportFactory transport_factory_;
     std::unordered_map<std::string, std::unique_ptr<ports::IModbusTransport>> transports_;
     std::unordered_map<std::string, std::shared_ptr<ports::IExecutor>> transport_executors_;
-    std::unordered_map<std::string, bool> poll_inflight_;
+    std::unordered_map<std::string, std::unique_ptr<EndpointPollState>> endpoint_poll_state_;
     std::unique_ptr<ports::IOpcUaFacade> opcua_;
     std::unique_ptr<adapters::AsioReactor> reactor_;
-    std::unordered_map<std::string, domain::TimestampMs> next_reconnect_ms_;
     std::optional<std::uint64_t> historian_sub_;
     bool started_{false};
 

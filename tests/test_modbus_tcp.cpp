@@ -22,41 +22,42 @@ namespace {
 class TcpHoldingSlave {
 public:
     TcpHoldingSlave() {
-        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
-        REQUIRE(listen_fd_ >= 0);
+        const int listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        REQUIRE(listen_fd >= 0);
+        listen_fd_.store(listen_fd);
         int yes = 1;
-        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+        ::setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         addr.sin_port = 0;
-        REQUIRE(::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+        REQUIRE(::bind(listen_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
         socklen_t len = sizeof(addr);
-        REQUIRE(::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &len) == 0);
+        REQUIRE(::getsockname(listen_fd, reinterpret_cast<sockaddr*>(&addr), &len) == 0);
         port_ = ntohs(addr.sin_port);
-        REQUIRE(::listen(listen_fd_, 1) == 0);
-        run_ = true;
+        REQUIRE(::listen(listen_fd, 1) == 0);
+        run_.store(true);
         thread_ = std::thread([this] { loop(); });
     }
 
     ~TcpHoldingSlave() {
-        run_ = false;
-        if (listen_fd_ >= 0) {
-            ::shutdown(listen_fd_, SHUT_RDWR);
+        run_.store(false);
+        const int listen_fd = listen_fd_.exchange(-1);
+        if (listen_fd >= 0) {
+            ::shutdown(listen_fd, SHUT_RDWR);
         }
-        if (client_fd_ >= 0) {
-            ::shutdown(client_fd_, SHUT_RDWR);
+        const int client_fd = client_fd_.exchange(-1);
+        if (client_fd >= 0) {
+            ::shutdown(client_fd, SHUT_RDWR);
         }
         if (thread_.joinable()) {
             thread_.join();
         }
-        if (client_fd_ >= 0) {
-            ::close(client_fd_);
-            client_fd_ = -1;
+        if (client_fd >= 0) {
+            ::close(client_fd);
         }
-        if (listen_fd_ >= 0) {
-            ::close(listen_fd_);
-            listen_fd_ = -1;
+        if (listen_fd >= 0) {
+            ::close(listen_fd);
         }
     }
 
@@ -69,17 +70,24 @@ public:
 
 private:
     void loop() {
-        while (run_) {
+        while (run_.load()) {
             sockaddr_in from{};
             socklen_t from_len = sizeof(from);
-            const int fd = ::accept(listen_fd_, reinterpret_cast<sockaddr*>(&from), &from_len);
-            if (fd < 0 || !run_) {
+            const int listen_fd = listen_fd_.load();
+            if (listen_fd < 0) {
+                break;
+            }
+            const int fd = ::accept(listen_fd, reinterpret_cast<sockaddr*>(&from), &from_len);
+            if (fd < 0 || !run_.load()) {
+                if (fd >= 0) {
+                    ::close(fd);
+                }
                 continue;
             }
-            client_fd_ = fd;
+            client_fd_.store(fd);
             serve_client(fd);
             ::close(fd);
-            client_fd_ = -1;
+            client_fd_.store(-1);
         }
     }
 
@@ -87,7 +95,7 @@ private:
         std::size_t got = 0;
         while (got < len) {
             const auto n = ::recv(fd, data + got, len - got, 0);
-            if (n <= 0 || !run) {
+            if (n <= 0 || !run.load()) {
                 return false;
             }
             got += static_cast<std::size_t>(n);
@@ -96,7 +104,7 @@ private:
     }
 
     void serve_client(int fd) {
-        while (run_) {
+        while (run_.load()) {
             std::uint8_t mbap[6];
             if (!recv_exact(fd, mbap, sizeof(mbap), run_)) {
                 return;
@@ -142,8 +150,8 @@ private:
         }
     }
 
-    int listen_fd_{-1};
-    int client_fd_{-1};
+    std::atomic<int> listen_fd_{-1};
+    std::atomic<int> client_fd_{-1};
     std::uint16_t port_{0};
     std::atomic<bool> run_{false};
     std::thread thread_;
