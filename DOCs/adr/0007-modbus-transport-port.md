@@ -27,9 +27,12 @@ write_register / write_registers / write_coil / write_coils
 2. Таймауты — параметр запроса или свойства endpoint; transport возвращает `ErrorCode::Timeout`.
 3. Modbus exception code → `ErrorCode::ModbusException` + деталь в `Error`.
 4. PDU encode/decode может жить в `adapters/modbus` или `core/modbus_codec` (pure); framing MBAP — в TCP adapter.
-5. Реализация по умолчанию: **Asio-native** (не libmodbus как жёсткая зависимость ядра). `Lib/modbuspp` не использовать.
+5. Реализация по умолчанию: **Asio-native** (`ModbusTcpTransport` / `AsioModbusTcpTransport`) —
+   async connect/read/write на private `io_context` с deadline; публичный API остаётся
+   sync `Result<>` для вызова со strand (не nested на reactor `io_context`). `Lib/modbuspp` не использовать.
 
-Асинхронный вариант API (предпочтительный для Asio): completion token / `async_` методы, но порт описывается так, чтобы Fake был синхронно-детерминированным под virtual clock.
+Асинхронный вариант API порта (completion token / `async_` методы) — следующий шаг; Fake остаётся
+синхронно-детерминированным под virtual clock.
 
 ## Alternatives
 

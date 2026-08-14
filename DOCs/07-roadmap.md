@@ -10,14 +10,15 @@
 
 Лабораторный контур **Modbus TCP → TagStore → OPC UA (Read/Write/Subscriptions)** работает end-to-end. Рядом: historian/frame-log, spdlog/OTel metrics, `opc-map` + doctor, Tauri Studio (read-only monitor). **Asio reactor** (strand-per-endpoint, `steady_timer`, reconnect backoff) закрывает anti-DoD `sleep` из [ADR-0002](adr/0002-concurrency-model.md).
 
-Это **ещё не** полный промышленный runtime: transport на strand остаётся блокирующим POSIX, demo-plant security — None (SignAndEncrypt доступен по проекту).
+Это **ещё не** полный промышленный runtime: TCP I/O на strand остаётся sync facade
+(Asio async внутри private `io_context`), demo-plant security — None (SignAndEncrypt доступен по проекту).
 
 | Контур | Состояние |
 |--------|-----------|
 | Карты `*.modbusproj.json` + semantic validate | Есть |
 | `opc-map validate` / `doctor` / `migrate-legacy` / `import-csv` / `gen-nodeset` | Есть |
 | TagStore, Translator, Dispatcher (`writes_first`) | Есть |
-| Sync Modbus TCP (holding/input/coil/discrete; write FC05/06/16) | Есть |
+| Sync Modbus TCP (holding/input/coil/discrete; write FC05/06/16) | Есть (Asio-native async I/O + sync facade) |
 | `ServerRuntime` + CLI (`--once`/`--watch`/historian/log/metrics) | Есть |
 | OPC UA DataSource Read + Write + MonitoredItems | Есть |
 | Diagnostics `Objects/OPC_SERVER/Diagnostics` | Есть |
@@ -62,7 +63,7 @@
 ### Этап 2 — ModbusPoller + Translator (по ADR)
 
 - [x] Реализация `Translator::decode/encode` + тесты byte order
-- [x] `ModbusTcpTransport` (sync TCP/MBAP за `IModbusTransport`; вызов только со strand)
+- [x] `ModbusTcpTransport` (Asio-native TCP/MBAP за `IModbusTransport`; sync facade, вызов только со strand)
 - [x] `Dispatcher::poll_due` + write queue (`writes_first`) + Fake component tests
 - [x] `RuntimeIndex` (TagId ↔ project tags)
 - [x] Watchlist в консоли / app composition root
@@ -213,10 +214,10 @@ SignAndEncrypt (fail-closed), сертификатный профиль Studio/o
 
 | Сейчас | Следующая цель |
 |--------|----------------|
-| Asio `io_context` + strand-per-endpoint; sync TCP на strand | Asio-native async Modbus TCP (по желанию) |
+| Asio `io_context` + strand-per-endpoint; **Asio-native TCP** (private ioc + async I/O, sync facade) | Optional completion-token transport API |
 | `reconnectDelayMs` backoff на strand | — |
 | `opc-map` validate (JSON Schema + semantic) / doctor / migrate / import-csv / gen-nodeset | — |
-| Studio + opc-monitor, cert profile Sign/SignAndEncrypt | username token / industrial CA |
+| Studio + opc-monitor, cert profile Sign/SignAndEncrypt; fail-closed PKI | username token / industrial CA |
 | OTel metrics + poll/write traces; OTLP в CI preset | — |
 | GCC CI + Conan + Studio matrix + ASan/TSan | — |
 
