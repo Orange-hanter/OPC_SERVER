@@ -81,21 +81,52 @@ std::shared_ptr<opc::project::Project> secure_project(std::uint16_t port, const 
 }  // namespace
 
 TEST_CASE("parse_cli recognizes UA certificate flags", "[app][cli]") {
-    const char* argv[] = {"OPC_SERVER", "--ua-cert", "c.der", "--ua-key", "k.der", "--ua-strict-certs"};
-    auto opts = opc::app::parse_cli(6, argv);
+    const char* argv[] = {"OPC_SERVER",
+                          "--ua-cert",
+                          "c.der",
+                          "--ua-key",
+                          "k.der",
+                          "--ua-trust",
+                          "t.der",
+                          "--ua-crl",
+                          "r.crl",
+                          "--ua-strict-certs",
+                          "--ua-accept-untrusted"};
+    auto opts = opc::app::parse_cli(11, argv);
     REQUIRE(opts.errors.empty());
     CHECK(opts.ua_cert_path == "c.der");
     CHECK(opts.ua_key_path == "k.der");
+    REQUIRE(opts.ua_trust_paths.size() == 1);
+    CHECK(opts.ua_trust_paths[0] == "t.der");
+    REQUIRE(opts.ua_revocation_paths.size() == 1);
+    CHECK(opts.ua_revocation_paths[0] == "r.crl");
     CHECK(opts.ua_strict_certs);
+    CHECK(opts.ua_accept_untrusted);
 }
 
 #ifdef UA_ENABLE_ENCRYPTION
+TEST_CASE("OpcUaServer SignAndEncrypt rejects missing CRL path", "[opcua][encryption][pki]") {
+    REQUIRE(opc::adapters::ua_encryption_built());
+    const auto port = free_tcp_port();
+    auto project = secure_project(port, "SignAndEncrypt");
+    NullLog log;
+    opc::adapters::OpcUaSecurityOptions pki{
+        .revocation_list = {"/no/such/revocation.crl"},
+        .accept_untrusted = true,
+    };
+    OpcUaServer server{&log, nullptr, std::move(pki)};
+    auto started = server.start(project);
+    REQUIRE_FALSE(started);
+    CHECK(started.error().message.find("ua-crl") != std::string::npos);
+}
+
 TEST_CASE("OpcUaServer SignAndEncrypt is honored and readable", "[opcua][encryption]") {
     REQUIRE(opc::adapters::ua_encryption_built());
     const auto port = free_tcp_port();
     auto project = secure_project(port, "SignAndEncrypt");
     NullLog log;
-    OpcUaServer server{&log, nullptr};
+    opc::adapters::OpcUaSecurityOptions pki{.accept_untrusted = true};  // lab AcceptAll
+    OpcUaServer server{&log, nullptr, std::move(pki)};
     auto started = server.start(project);
     REQUIRE(started);
 

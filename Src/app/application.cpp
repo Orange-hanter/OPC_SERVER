@@ -176,7 +176,23 @@ bool Application::init(const CliOptions& options) {
         pki.certificate_path = options_.ua_cert_path;
         pki.private_key_path = options_.ua_key_path;
         pki.trust_list = options_.ua_trust_paths;
-        pki.accept_untrusted = !options_.ua_strict_certs;
+        pki.revocation_list = options_.ua_revocation_paths;
+        // Sign/Encrypt is fail-closed: AcceptAll only with explicit lab flag.
+        // --ua-strict-certs always wins (reject untrusted).
+        const bool secure =
+            (*project)->opcua.security_mode != project::SecurityMode::None;
+        if (options_.ua_strict_certs) {
+            pki.accept_untrusted = false;
+        } else if (secure) {
+            pki.accept_untrusted = options_.ua_accept_untrusted;
+        } else {
+            pki.accept_untrusted = true;  // security None: no channel PKI
+        }
+        if (secure && !pki.accept_untrusted && pki.trust_list.empty()) {
+            log_->warn("app",
+                       "Sign/Encrypt without --ua-trust: only explicitly trusted client "
+                       "certificates will be accepted (pass --ua-accept-untrusted for lab)");
+        }
         opcua = std::make_unique<adapters::OpcUaServer>(log_.get(), metrics_.get(), std::move(pki));
     }
 

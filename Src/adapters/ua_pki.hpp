@@ -15,8 +15,10 @@ struct OpcUaSecurityOptions {
     std::string certificate_path;
     std::string private_key_path;
     std::vector<std::string> trust_list;
+    std::vector<std::string> revocation_list;  // CRL / reject list files
     bool generate_if_missing{true};
-    bool accept_untrusted{true};
+    /// Lab only. Industrial Sign/Encrypt defaults to false (no AcceptAll).
+    bool accept_untrusted{false};
 };
 
 [[nodiscard]] bool ua_encryption_built();
