@@ -189,3 +189,25 @@ TEST_CASE("ModbusTcpTransport reconnects after peer close", "[integration][modbu
     REQUIRE(regs);
     REQUIRE((*regs)[0] == 9);
 }
+
+TEST_CASE("ModbusTcpTransport destructor releases the TCP connection",
+          "[integration][modbus][tcp][raii]") {
+    LoopbackModbusSlave slave;
+    slave.set_holding(1, 0, 77);
+    const auto endpoint =
+        opc::ports::EndpointAddress{.host = "127.0.0.1", .port = slave.port()};
+
+    {
+        ModbusTcpTransport first(500);
+        REQUIRE(first.connect(endpoint));
+        REQUIRE(first.read_holding_registers(1, 0, 1));
+    }
+
+    // The single-threaded slave can serve this request only after the first
+    // connection observes EOF, proving that the transport destructor closed it.
+    ModbusTcpTransport second(500);
+    REQUIRE(second.connect(endpoint));
+    auto regs = second.read_holding_registers(1, 0, 1);
+    REQUIRE(regs);
+    CHECK((*regs)[0] == 77);
+}

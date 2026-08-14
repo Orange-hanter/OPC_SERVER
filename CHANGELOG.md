@@ -22,6 +22,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   Valgrind Memcheck nightly; deterministic scripts/presets for local runs
 - Modbus TCP rejects mismatched MBAP transaction/protocol/unit/function,
   malformed byte counts, invalid write echoes and out-of-spec quantities
+- `ModbusTcpTransport` now closes its socket in the destructor; Valgrind
+  descriptor tracking and a two-connection RAII regression cover the leak
 - Translator rejects non-finite and overflowing integer/float conversions
   instead of silently wrapping engineering values
 - Tauri 2 Engineering Studio for Windows, Linux and macOS with local project
