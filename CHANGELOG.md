@@ -15,6 +15,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Property tests for Translator, expanded `FakeModbusTransport`, Modbus TCP
   loopback slave, `OPC_E2E=1` MVP scenario, layer-lint, ASan CI, TSan/coverage presets
 - Studio schema-parity fixtures, Vitest coverage of Monitor/i18n, `cargo test` sidecar guards
+- Dispatcher coverage of Input/Discrete/coil write, Permission, DecodingError, WriteRejected,
+  reconnect and poll-by-blocks; RuntimeIndex unit tests; Modbus FC02/FC04, packed coils, exception 03
+- `validate` rejects duplicate tag names across devices (`RuntimeIndex` is globally name-keyed)
 - Tauri 2 Engineering Studio for Windows, Linux and macOS with local project
   editing, JSON Schema/`opc-map` validation, RU/EN themes and read-only remote
   OPC UA monitoring (ADR-0016)

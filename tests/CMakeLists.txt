@@ -4,6 +4,7 @@ add_executable(opc_tests
   unit/test_tag_store.cpp
   unit/test_tag_store_concurrent.cpp
   unit/test_quality_status.cpp
+  unit/test_runtime_index.cpp
   component/test_dispatcher.cpp
   component/test_dispatcher_faults.cpp
   component/test_fake_modbus.cpp

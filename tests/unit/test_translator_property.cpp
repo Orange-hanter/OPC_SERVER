@@ -106,3 +106,22 @@ TEST_CASE("Translator rejects zero scale on encode", "[unit][core][translator]")
     Tag tag = make_tag(TagType::UInt16, "AB", 0.0, 0.0);
     REQUIRE_FALSE(Translator::encode(tag, std::uint16_t{1}).has_value());
 }
+
+TEST_CASE("Translator rejects empty and type-mismatched values", "[unit][core][translator]") {
+    Tag flag = make_tag(TagType::Bool, {});
+    REQUIRE_FALSE(Translator::encode(flag, std::uint16_t{1}).has_value());
+    REQUIRE_FALSE(Translator::encode(flag, std::monostate{}).has_value());
+
+    Tag u16 = make_tag(TagType::UInt16, "AB");
+    REQUIRE_FALSE(Translator::encode(u16, std::monostate{}).has_value());
+}
+
+TEST_CASE("Translator float32 applies scale and offset on roundtrip",
+          "[unit][core][translator][property]") {
+    Tag tag = make_tag(TagType::Float32, "ABCD", 2.0, 1.0);
+    auto encoded = Translator::encode(tag, 5.0f);
+    REQUIRE(encoded);
+    auto decoded = Translator::decode(tag, *encoded);
+    REQUIRE(decoded);
+    REQUIRE(std::get<float>(*decoded) == Catch::Approx(5.0f));
+}

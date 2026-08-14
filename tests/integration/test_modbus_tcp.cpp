@@ -46,6 +46,47 @@ TEST_CASE("ModbusTcpTransport coils and exception codes", "[integration][modbus]
     REQUIRE(failed.error().protocol_status == 2);
 }
 
+TEST_CASE("ModbusTcpTransport reads input registers, discrete inputs and packed coils",
+          "[integration][modbus][tcp]") {
+    LoopbackModbusSlave slave;
+    slave.set_input(1, 7, 0x1111);
+    slave.set_discrete(1, 0, true);
+    slave.set_discrete(1, 9, true);
+    for (std::uint16_t i = 0; i < 10; ++i) {
+        slave.set_coil(1, i, (i % 2) == 0);
+    }
+    ModbusTcpTransport transport(500);
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = slave.port()}));
+
+    auto inputs = transport.read_input_registers(1, 7, 1);
+    REQUIRE(inputs);
+    REQUIRE((*inputs)[0] == 0x1111);
+
+    auto discs = transport.read_discrete_inputs(1, 0, 10);
+    REQUIRE(discs);
+    REQUIRE((*discs)[0]);
+    REQUIRE((*discs)[9]);
+    REQUIRE_FALSE((*discs)[1]);
+
+    auto coils = transport.read_coils(1, 0, 10);
+    REQUIRE(coils);
+    REQUIRE(coils->size() == 10);
+    REQUIRE((*coils)[0]);
+    REQUIRE_FALSE((*coils)[1]);
+    REQUIRE((*coils)[8]);
+}
+
+TEST_CASE("ModbusTcpTransport maps exception 03 illegal value", "[integration][modbus][tcp]") {
+    LoopbackModbusSlave slave;
+    ModbusTcpTransport transport(500);
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = slave.port()}));
+    slave.fail_illegal_value_once();
+    auto failed = transport.read_input_registers(1, 0, 1);
+    REQUIRE_FALSE(failed);
+    REQUIRE(failed.error().code == opc::domain::ErrorCode::ModbusException);
+    REQUIRE(failed.error().protocol_status == 3);
+}
+
 TEST_CASE("ModbusTcpTransport reconnects after peer close", "[integration][modbus][tcp]") {
     LoopbackModbusSlave slave;
     slave.set_holding(1, 0, 9);

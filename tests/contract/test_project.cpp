@@ -108,3 +108,54 @@ TEST_CASE("migrate legacy config.json produces loadable project", "[contract][pr
     CHECK(result.project.poll_groups.size() == 2);
     CHECK(result.project.endpoints.size() == 1);
 }
+
+TEST_CASE("semantic validation rejects writable input, bad byteOrder and duplicate names",
+          "[contract][project]") {
+    constexpr std::string_view kJson = R"({
+      "schemaVersion": 1,
+      "name": "semantic",
+      "endpoints": [
+        {"id": "ep1", "host": "127.0.0.1", "port": 502, "transport": "tcp"}
+      ],
+      "devices": [
+        {"id": "d1", "endpointId": "ep1", "unitId": 1, "tags": [
+          {"name": "InW", "area": "input", "address": 0, "type": "uint16",
+           "byteOrder": "AB", "writable": true, "group": "g1"},
+          {"name": "Order", "area": "holding", "address": 1, "type": "float32",
+           "byteOrder": "AB", "group": "g1"}
+        ]},
+        {"id": "d2", "endpointId": "ep1", "unitId": 2, "tags": [
+          {"name": "InW", "area": "holding", "address": 0, "type": "uint16",
+           "byteOrder": "AB", "group": "g2"}
+        ]}
+      ],
+      "pollGroups": [
+        {"id": "g1", "periodMs": 5, "priority": "fast", "deviceId": "d1", "tagNames": ["InW"]},
+        {"id": "g2", "periodMs": 100, "priority": "normal", "deviceId": "d2", "tagNames": ["InW"]}
+      ]
+    })";
+    const auto result = opc::project::load_json_text(kJson, "semantic.json");
+    REQUIRE_FALSE(result.ok);
+    bool writable = false;
+    bool byte_order = false;
+    bool duplicate = false;
+    bool period = false;
+    for (const auto& d : result.diagnostics) {
+        if (d.message.find("cannot be writable") != std::string::npos) {
+            writable = true;
+        }
+        if (d.message.find("invalid byteOrder") != std::string::npos) {
+            byte_order = true;
+        }
+        if (d.message.find("across devices") != std::string::npos) {
+            duplicate = true;
+        }
+        if (d.message.find("periodMs must be >= 10") != std::string::npos) {
+            period = true;
+        }
+    }
+    CHECK(writable);
+    CHECK(byte_order);
+    CHECK(duplicate);
+    CHECK(period);
+}

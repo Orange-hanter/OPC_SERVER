@@ -27,6 +27,12 @@ TEST_CASE("Quality maps to OPC UA StatusCode per information model", "[unit][opc
           UA_STATUSCODE_BADWRITENOTSUPPORTED);
     CHECK(OpcUaServer::quality_to_status(Quality::Bad, QualityReason::OutOfRange) ==
           UA_STATUSCODE_BADOUTOFRANGE);
+    CHECK(OpcUaServer::quality_to_status(Quality::Bad, QualityReason::DeviceFailure) ==
+          UA_STATUSCODE_BADDEVICEFAILURE);
+    CHECK(OpcUaServer::quality_to_status(Quality::Bad, QualityReason::WritePending) ==
+          UA_STATUSCODE_BADINTERNALERROR);
+    CHECK(OpcUaServer::quality_to_status(Quality::Good, QualityReason::WritePending) ==
+          UA_STATUSCODE_GOOD);
 }
 
 TEST_CASE("Write errors map to UA StatusCodes", "[unit][opcua][quality]") {
@@ -38,4 +44,10 @@ TEST_CASE("Write errors map to UA StatusCodes", "[unit][opcua][quality]") {
 
     Error type{ErrorCode::InvalidArgument, "bad", "core.dispatcher", false};
     CHECK(OpcUaServer::map_error_to_status(type) == UA_STATUSCODE_BADTYPEMISMATCH);
+
+    Error access{ErrorCode::Permission, "session denied", "adapters.opcua", false};
+    CHECK(OpcUaServer::map_error_to_status(access) == UA_STATUSCODE_BADUSERACCESSDENIED);
+
+    Error unknown{ErrorCode::NotFound, "missing", "core.dispatcher", false};
+    CHECK(OpcUaServer::map_error_to_status(unknown) == UA_STATUSCODE_BADINTERNALERROR);
 }

@@ -80,13 +80,13 @@ OPC_E2E=1 ./build/dev/tests/opc_tests "[e2e]"
 | ID | Требование | Уровень | Где |
 |----|------------|---------|-----|
 | FR-1 | Загрузка и валидация `*.modbusproj.json` | Contract | `tests/contract/test_project.cpp`, `opc-map validate` |
-| FR-2 | Циклический опрос Holding/Input/Coil/Discrete | Component + Integration | Fake + `LoopbackModbusSlave` |
+| FR-2 | Циклический опрос Holding/Input/Coil/Discrete | Component + Integration | Fake + `LoopbackModbusSlave`; Dispatcher все 4 area; FC02/FC04/packed coils |
 | FR-3 | Публикация DataValue (значение, Quality, timestamps) | Unit + UA smoke | Translator, TagStore, `test_opc_ua_read.cpp` |
 | FR-4 | UA Write → очередь Modbus, `writes_first` | Component + UA smoke | Dispatcher, `test_opc_ua_write_subs.cpp` |
 | FR-5 | Отладка: frame log, watchlist, метрики | Component | historian, frame_log, spdlog/otel |
 | FR-6 | Historian hot/cold + replay | Component | `test_historian.cpp`, `test_frame_replay.cpp` |
 | NFR-1 | Детерминизм опроса, изоляция endpoint | Component | `ManualClock`, два endpoint |
-| NFR-2 | Quality отражает timeout / exception / stale | Unit + Component | `quality_to_status`, Fake fail/inject |
+| NFR-2 | Quality отражает timeout / exception / stale | Unit + Component | `quality_to_status`, Fake fail/inject, DecodingError, WriteRejected, exception 02/03 |
 | NFR-3 | UA security None (lab); SignAndEncrypt — этап 7 | Lab | [testing/opc-ua-ctt.md](testing/opc-ua-ctt.md) |
 | NFR-4 | Наблюдаемость полей логов и метрик | Component | spdlog/otel tests; soak-контракт метрик |
 | NFR-5 | Инженерия карт, schema, CLI | Contract + Studio | fixtures + Ajv parity + Vitest |

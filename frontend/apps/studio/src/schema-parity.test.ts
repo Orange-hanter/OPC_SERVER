@@ -28,4 +28,9 @@ describe('schema parity with C++ fixtures', () => {
     const issues = await validator.validate(readJson('tests/fixtures/invalid/unknown-endpoint.json'))
     expect(issues).toEqual([])
   })
+
+  it('allows schema-valid maps that C++ rejects semantically', async () => {
+    await expect(validator.validate(readJson('tests/fixtures/invalid/writable-input.json'))).resolves.toEqual([])
+    await expect(validator.validate(readJson('tests/fixtures/invalid/duplicate-tag-name.json'))).resolves.toEqual([])
+  })
 })

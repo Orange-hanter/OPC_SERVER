@@ -86,6 +86,7 @@ public:
     }
 
     void fail_illegal_address_once() { illegal_address_once_ = true; }
+    void fail_illegal_value_once() { illegal_value_once_ = true; }
 
     void stop() {
         if (!running_.exchange(false)) {
@@ -176,6 +177,9 @@ private:
                                          std::span<const std::uint8_t> data) {
         if (illegal_address_once_.exchange(false)) {
             return {static_cast<std::uint8_t>(fn | 0x80u), 0x02};
+        }
+        if (illegal_value_once_.exchange(false)) {
+            return {static_cast<std::uint8_t>(fn | 0x80u), 0x03};
         }
         if ((fn == 0x03 || fn == 0x04 || fn == 0x01 || fn == 0x02) && data.size() >= 4) {
             const auto addr = read_u16(data.data());
@@ -276,6 +280,7 @@ private:
     std::uint16_t port_{0};
     std::atomic<bool> running_{false};
     std::atomic<bool> illegal_address_once_{false};
+    std::atomic<bool> illegal_value_once_{false};
     std::thread thread_;
     mutable std::mutex mutex_;
     std::unordered_map<Key, std::uint16_t> holding_;

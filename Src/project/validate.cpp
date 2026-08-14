@@ -65,6 +65,7 @@ void validate(Project& project, std::vector<Diagnostic>& diagnostics) {
 
     std::unordered_map<std::string, const Device*> devices_by_id;
     std::unordered_set<std::string> device_ids;
+    std::unordered_set<std::string> global_tag_names;
     for (std::size_t i = 0; i < project.devices.size(); ++i) {
         const auto& device = project.devices[i];
         const std::string path = "devices[" + std::to_string(i) + "]";
@@ -92,6 +93,9 @@ void validate(Project& project, std::vector<Diagnostic>& diagnostics) {
             const std::string tpath = path + ".tags[" + std::to_string(ti) + "]";
             if (!tag.name.empty() && !tag_names.insert(tag.name).second) {
                 add_error(diagnostics, tpath + ".name", "duplicate tag name '" + tag.name + "'");
+            } else if (!tag.name.empty() && !global_tag_names.insert(tag.name).second) {
+                add_error(diagnostics, tpath + ".name",
+                          "duplicate tag name '" + tag.name + "' across devices");
             }
             if (tag.address < 0) {
                 add_error(diagnostics, tpath + ".address", "address must be >= 0");
