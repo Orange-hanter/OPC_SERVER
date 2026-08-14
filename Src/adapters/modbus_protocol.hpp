@@ -61,4 +61,28 @@ modbus_write_multiple_coils(const ModbusTransact& tx,
                             std::uint16_t address,
                             std::span<const std::uint8_t> values);
 
+[[nodiscard]] domain::Result<std::vector<std::uint16_t>>
+decode_register_response(std::span<const std::uint8_t> resp, std::uint16_t quantity);
+
+[[nodiscard]] domain::Result<std::vector<bool>>
+decode_bits_response(std::span<const std::uint8_t> resp, std::uint16_t quantity);
+
+[[nodiscard]] std::vector<std::uint8_t>
+make_read_registers_pdu(std::uint8_t function, std::uint16_t address, std::uint16_t quantity);
+
+[[nodiscard]] std::vector<std::uint8_t>
+make_read_bits_pdu(std::uint8_t function, std::uint16_t address, std::uint16_t quantity);
+
+[[nodiscard]] std::vector<std::uint8_t>
+make_write_single_register_pdu(std::uint16_t address, std::uint16_t value);
+
+[[nodiscard]] std::vector<std::uint8_t>
+make_write_multiple_registers_pdu(std::uint16_t address, std::span<const std::uint16_t> values);
+
+[[nodiscard]] std::vector<std::uint8_t>
+make_write_single_coil_pdu(std::uint16_t address, bool value);
+
+[[nodiscard]] domain::Result<std::vector<std::uint8_t>>
+make_write_multiple_coils_pdu(std::uint16_t address, std::span<const std::uint8_t> values);
+
 }  // namespace opc::adapters
