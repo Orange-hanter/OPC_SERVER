@@ -61,7 +61,7 @@
 - [x] ADR-0013: DataSource, facade без `dynamic_cast`, preserve value, write-queue bounds
 - [x] `cmake --install` + `OPC_SERVER --version`
 - [ ] Asio reactor / убрать sleep (перенос из 2.5)
-- [ ] TSan CI job
+- [x] TSan CI job (nightly workflow + preset `tsan`)
 
 ### Этап 5 — Historian и Debug
 

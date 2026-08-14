@@ -21,6 +21,7 @@ class ModbusTcpTransport final : public ports::IModbusTransport {
 public:
     explicit ModbusTcpTransport(int response_timeout_ms = 1000);
     explicit ModbusTcpTransport(ModbusTcpTransportOptions options);
+    ~ModbusTcpTransport() override { close(); }
 
     domain::Result<void> connect(const ports::EndpointAddress& endpoint) override;
     void close() override;

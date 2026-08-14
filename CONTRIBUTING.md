@@ -10,10 +10,24 @@
 
 ```bash
 cmake --workflow --preset dev
+python3 scripts/layer-lint.py
 ./build/dev/tools/opc-map/opc-map validate DOCs/examples/demo-plant.modbusproj.json
 ```
 
+Тесты: [DOCs/13-testing-program.md](DOCs/13-testing-program.md), [ADR-0004](DOCs/adr/0004-testing-strategy.md).
+
 Другие профили и Conan 2: [DOCs/12-modern-cmake.md](DOCs/12-modern-cmake.md).
+
+Глубокие C++ проверки:
+
+```bash
+cmake --workflow --preset asan       # AddressSanitizer + UndefinedBehaviorSanitizer
+./scripts/run-static-analysis.sh     # Clang -Werror + clang-tidy + cppcheck
+cmake --preset valgrind
+cmake --build --preset valgrind
+./scripts/run-valgrind.sh            # Memcheck: invalid access, UAF, leaks, fd leaks
+cmake --workflow --preset tsan       # data races; nightly/toolchain-dependent
+```
 
 Форматирование:
 

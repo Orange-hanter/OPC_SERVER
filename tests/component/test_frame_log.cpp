@@ -6,7 +6,7 @@
 
 #include <filesystem>
 
-TEST_CASE("MemoryFrameLog stores frames", "[adapters][framelog]") {
+TEST_CASE("MemoryFrameLog stores frames", "[component][adapters][framelog]") {
     opc::adapters::MemoryFrameLog log;
     opc::ports::FrameRecord frame;
     frame.ts_ms = 42;
@@ -21,7 +21,7 @@ TEST_CASE("MemoryFrameLog stores frames", "[adapters][framelog]") {
     CHECK(frames[0].tx.size() == 4);
 }
 
-TEST_CASE("FileFrameLog appends text lines", "[adapters][framelog]") {
+TEST_CASE("FileFrameLog appends text lines", "[component][adapters][framelog]") {
     const auto path = (std::filesystem::temp_directory_path() / "opc_frame_log_test.txt").string();
     std::filesystem::remove(path);
     {
@@ -39,7 +39,7 @@ TEST_CASE("FileFrameLog appends text lines", "[adapters][framelog]") {
     std::filesystem::remove(path);
 }
 
-TEST_CASE("FileFrameLog round-trips through parser", "[adapters][framelog]") {
+TEST_CASE("FileFrameLog round-trips through parser", "[component][adapters][framelog]") {
     const auto path = (std::filesystem::temp_directory_path() / "opc_frame_log_parse.txt").string();
     std::filesystem::remove(path);
     {

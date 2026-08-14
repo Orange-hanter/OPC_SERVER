@@ -7,7 +7,7 @@ using opc::core::Translator;
 using opc::project::Tag;
 using opc::project::TagType;
 
-TEST_CASE("Translator float32 ABCD roundtrip", "[core][translator]") {
+TEST_CASE("Translator float32 ABCD roundtrip", "[unit][core][translator]") {
     Tag tag;
     tag.type = TagType::Float32;
     tag.byte_order = "ABCD";
@@ -25,7 +25,7 @@ TEST_CASE("Translator float32 ABCD roundtrip", "[core][translator]") {
     REQUIRE(std::get<float>(*decoded) == Catch::Approx(original));
 }
 
-TEST_CASE("Translator float32 CDAB differs from ABCD", "[core][translator]") {
+TEST_CASE("Translator float32 CDAB differs from ABCD", "[unit][core][translator]") {
     Tag abcd;
     abcd.type = TagType::Float32;
     abcd.byte_order = "ABCD";
@@ -42,7 +42,7 @@ TEST_CASE("Translator float32 CDAB differs from ABCD", "[core][translator]") {
     REQUIRE(std::get<float>(*as_cdab) != Catch::Approx(1.0f));
 }
 
-TEST_CASE("Translator uint16 BA byte swap", "[core][translator]") {
+TEST_CASE("Translator uint16 BA byte swap", "[unit][core][translator]") {
     Tag tag;
     tag.type = TagType::UInt16;
     tag.byte_order = "BA";
@@ -55,7 +55,7 @@ TEST_CASE("Translator uint16 BA byte swap", "[core][translator]") {
     REQUIRE(std::get<std::uint16_t>(*decoded) == 1);
 }
 
-TEST_CASE("Translator encode/decode uint16", "[core][translator]") {
+TEST_CASE("Translator encode/decode uint16", "[unit][core][translator]") {
     Tag tag;
     tag.type = TagType::UInt16;
     tag.byte_order = "AB";

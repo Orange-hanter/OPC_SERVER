@@ -3,7 +3,7 @@
 #include "project/doctor.hpp"
 #include "project/load.hpp"
 
-TEST_CASE("doctor flags unpolled tags and register overlap", "[project][doctor]") {
+TEST_CASE("doctor flags unpolled tags and register overlap", "[contract][project][doctor]") {
     constexpr std::string_view kJson = R"({
       "schemaVersion": 1,
       "name": "doc",
@@ -44,7 +44,7 @@ TEST_CASE("doctor flags unpolled tags and register overlap", "[project][doctor]"
     CHECK(saw_overlap);
 }
 
-TEST_CASE("doctor flags sparse poll blocks", "[project][doctor]") {
+TEST_CASE("doctor flags sparse poll blocks", "[contract][project][doctor]") {
     constexpr std::string_view kJson = R"({
       "schemaVersion": 1,
       "name": "sparse",

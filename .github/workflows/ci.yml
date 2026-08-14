@@ -30,6 +30,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
 
+      - name: Layer lint
+        run: python3 scripts/layer-lint.py
+
       - name: Configure
         run: cmake --preset ci -DCMAKE_CXX_COMPILER=g++
 
@@ -61,6 +64,53 @@ jobs:
             dist/opc-server-linux-x64.tar.gz.sha256
           if-no-files-found: error
           retention-days: 14
+
+  asan:
+    name: ASan + UBSan (ubuntu-24.04 / g++)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+
+      - name: Configure
+        run: cmake --preset asan -DCMAKE_CXX_COMPILER=g++
+
+      - name: Build
+        run: cmake --build --preset asan
+
+      - name: Test
+        run: ctest --preset asan --timeout 180
+
+  static-analysis:
+    name: Clang warnings, clang-tidy & cppcheck
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install analysis toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build cmake g++-14 clang-19 clang-tidy-19 lld-19 \
+            cppcheck libsqlite3-dev
+
+      - name: Analyze and build
+        run: ./scripts/run-static-analysis.sh
+
+      - name: Test Clang build
+        run: ctest --test-dir build/static-analysis --output-on-failure --timeout 180
 
   conan:
     name: Conan 2 dependency provider
@@ -118,6 +168,19 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Sidecar unit tests
+        working-directory: frontend/apps/studio/src-tauri
+        run: cargo test -- --nocapture
 
       - name: End-to-end test
         run: npm run test:e2e

@@ -87,7 +87,7 @@ std::string child_id(const std::vector<nlohmann::json>& events,
 
 }  // namespace
 
-TEST_CASE("opc-monitor validates read-only JSON commands", "[opc-monitor]") {
+TEST_CASE("opc-monitor validates read-only JSON commands", "[integration][opc-monitor]") {
     std::vector<nlohmann::json> events;
     opc::monitor::MonitorClient client{
         [&](nlohmann::json event) { events.push_back(std::move(event)); }};
@@ -105,7 +105,7 @@ TEST_CASE("opc-monitor validates read-only JSON commands", "[opc-monitor]") {
     CHECK(events.back()["requestId"] == "offline");
 }
 
-TEST_CASE("opc-monitor browses and subscribes to diagnostics", "[opc-monitor][opcua]") {
+TEST_CASE("opc-monitor browses and subscribes to diagnostics", "[integration][opc-monitor][opcua]") {
     const auto project = monitor_project(monitor_free_port());
     opc::ports::NullLog log;
     opc::adapters::OpcUaServer server{&log};

@@ -11,9 +11,14 @@ npm run dev          # browser mode with file-picker and OPC UA mock
 npm run tauri dev    # native mode
 npm run lint
 npm run typecheck
-npm test
-npm run build
+```sh
+npm test             # Vitest unit/component
+npm run test:e2e     # Playwright browser mock
+cargo test --manifest-path src-tauri/Cargo.toml
+OPC_STUDIO_NATIVE=1 npm run test:e2e   # opt-in native sidecar (lab)
 ```
+
+Schema fixtures shared with C++ live in `tests/fixtures/` at the repo root.
 
 The project validator compiles `DOCs/schemas/modbus-project.schema.json` into the
 frontend build. Native validation additionally executes the bundled `opc-map`

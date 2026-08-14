@@ -98,34 +98,24 @@ Result<std::array<std::uint8_t, 4>> regs_to_be_bytes(std::span<const std::uint16
 
 Result<std::array<std::uint16_t, 2>> be_bytes_to_regs(std::array<std::uint8_t, 4> be,
                                                      const std::string& order) {
-    std::uint8_t a = be[0], b = be[1], c = be[2], d = be[3];
-    std::uint8_t p = a, q = b, r = c, s = d;
+    const auto [a, b, c, d] = be;
+    std::array<std::uint8_t, 4> wire{};
     if (order == "ABCD") {
-        p = a;
-        q = b;
-        r = c;
-        s = d;
+        wire = {a, b, c, d};
     } else if (order == "CDAB") {
-        p = c;
-        q = d;
-        r = a;
-        s = b;
+        wire = {c, d, a, b};
     } else if (order == "BADC") {
-        p = b;
-        q = a;
-        r = d;
-        s = c;
+        wire = {b, a, d, c};
     } else if (order == "DCBA") {
-        p = d;
-        q = c;
-        r = b;
-        s = a;
+        wire = {d, c, b, a};
     } else {
         return std::unexpected(
             Error{ErrorCode::Decoding, "unsupported byteOrder for 32-bit", "core.translator", false});
     }
-    const std::uint16_t r0 = static_cast<std::uint16_t>((p << 8) | q);
-    const std::uint16_t r1 = static_cast<std::uint16_t>((r << 8) | s);
+    const std::uint16_t r0 =
+        static_cast<std::uint16_t>((wire[0] << 8) | wire[1]);
+    const std::uint16_t r1 =
+        static_cast<std::uint16_t>((wire[2] << 8) | wire[3]);
     return std::array<std::uint16_t, 2>{r0, r1};
 }
 
@@ -163,11 +153,20 @@ double apply_scale(double raw, const Tag& tag) {
 }
 
 Result<double> invert_scale(double eng, const Tag& tag) {
+    if (!std::isfinite(eng) || !std::isfinite(tag.scale) || !std::isfinite(tag.offset)) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidArgument, "non-finite scale/value", "core.translator", false});
+    }
     if (tag.scale == 0.0) {
         return std::unexpected(
             Error{ErrorCode::InvalidArgument, "scale is zero", "core.translator", false});
     }
-    return (eng - tag.offset) / tag.scale;
+    const double raw = (eng - tag.offset) / tag.scale;
+    if (!std::isfinite(raw)) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidArgument, "scaled value is out of range", "core.translator", false});
+    }
+    return raw;
 }
 
 Result<double> scalar_to_double(const ScalarValue& value) {
@@ -186,6 +185,22 @@ Result<double> scalar_to_double(const ScalarValue& value) {
         value);
 }
 
+template <typename T>
+Result<T> checked_integral(double value) {
+    if (!std::isfinite(value)) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidArgument, "non-finite integer value", "core.translator", false});
+    }
+    const double rounded = std::round(value);
+    const double lowest = static_cast<double>(std::numeric_limits<T>::lowest());
+    const double highest = static_cast<double>(std::numeric_limits<T>::max());
+    if (rounded < lowest || rounded > highest) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidArgument, "integer value is out of range", "core.translator", false});
+    }
+    return static_cast<T>(rounded);
+}
+
 }  // namespace
 
 Result<ScalarValue> Translator::decode(const Tag& tag, std::span<const std::uint16_t> registers) {
@@ -202,8 +217,12 @@ Result<ScalarValue> Translator::decode(const Tag& tag, std::span<const std::uint
         if (!raw) {
             return std::unexpected(raw.error());
         }
-        return ScalarValue{static_cast<std::uint16_t>(
-            std::llround(apply_scale(static_cast<double>(*raw), tag)))};
+        auto scaled = checked_integral<std::uint16_t>(
+            apply_scale(static_cast<double>(*raw), tag));
+        if (!scaled) {
+            return std::unexpected(scaled.error());
+        }
+        return ScalarValue{*scaled};
     }
     case TagType::Int16: {
         auto raw = reorder_u16(registers[0], order);
@@ -211,8 +230,12 @@ Result<ScalarValue> Translator::decode(const Tag& tag, std::span<const std::uint
             return std::unexpected(raw.error());
         }
         const auto signed_raw = static_cast<std::int16_t>(*raw);
-        return ScalarValue{static_cast<std::int16_t>(
-            std::llround(apply_scale(static_cast<double>(signed_raw), tag)))};
+        auto scaled = checked_integral<std::int16_t>(
+            apply_scale(static_cast<double>(signed_raw), tag));
+        if (!scaled) {
+            return std::unexpected(scaled.error());
+        }
+        return ScalarValue{*scaled};
     }
     case TagType::UInt32: {
         auto bytes = regs_to_be_bytes(registers, order);
@@ -220,8 +243,12 @@ Result<ScalarValue> Translator::decode(const Tag& tag, std::span<const std::uint
             return std::unexpected(bytes.error());
         }
         const auto raw = bytes_to_u32(*bytes);
-        return ScalarValue{
-            static_cast<std::uint32_t>(std::llround(apply_scale(static_cast<double>(raw), tag)))};
+        auto scaled = checked_integral<std::uint32_t>(
+            apply_scale(static_cast<double>(raw), tag));
+        if (!scaled) {
+            return std::unexpected(scaled.error());
+        }
+        return ScalarValue{*scaled};
     }
     case TagType::Int32: {
         auto bytes = regs_to_be_bytes(registers, order);
@@ -229,8 +256,12 @@ Result<ScalarValue> Translator::decode(const Tag& tag, std::span<const std::uint
             return std::unexpected(bytes.error());
         }
         const auto raw = static_cast<std::int32_t>(bytes_to_u32(*bytes));
-        return ScalarValue{
-            static_cast<std::int32_t>(std::llround(apply_scale(static_cast<double>(raw), tag)))};
+        auto scaled = checked_integral<std::int32_t>(
+            apply_scale(static_cast<double>(raw), tag));
+        if (!scaled) {
+            return std::unexpected(scaled.error());
+        }
+        return ScalarValue{*scaled};
     }
     case TagType::Float32: {
         auto bytes = regs_to_be_bytes(registers, order);
@@ -276,7 +307,11 @@ Translator::encode(const Tag& tag, const ScalarValue& engineering_value) {
         if (!raw_d) {
             return std::unexpected(raw_d.error());
         }
-        auto raw = reorder_u16(static_cast<std::uint16_t>(std::llround(*raw_d)), order);
+        auto checked = checked_integral<std::uint16_t>(*raw_d);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        auto raw = reorder_u16(*checked, order);
         if (!raw) {
             return std::unexpected(raw.error());
         }
@@ -291,7 +326,11 @@ Translator::encode(const Tag& tag, const ScalarValue& engineering_value) {
         if (!raw_d) {
             return std::unexpected(raw_d.error());
         }
-        const auto signed_raw = static_cast<std::int16_t>(std::llround(*raw_d));
+        auto checked = checked_integral<std::int16_t>(*raw_d);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        const auto signed_raw = *checked;
         auto raw = reorder_u16(static_cast<std::uint16_t>(signed_raw), order);
         if (!raw) {
             return std::unexpected(raw.error());
@@ -308,7 +347,20 @@ Translator::encode(const Tag& tag, const ScalarValue& engineering_value) {
         if (!raw_d) {
             return std::unexpected(raw_d.error());
         }
-        const auto bits = static_cast<std::uint32_t>(std::llround(*raw_d));
+        std::uint32_t bits = 0;
+        if (tag.type == TagType::UInt32) {
+            auto checked = checked_integral<std::uint32_t>(*raw_d);
+            if (!checked) {
+                return std::unexpected(checked.error());
+            }
+            bits = *checked;
+        } else {
+            auto checked = checked_integral<std::int32_t>(*raw_d);
+            if (!checked) {
+                return std::unexpected(checked.error());
+            }
+            bits = static_cast<std::uint32_t>(*checked);
+        }
         auto words = be_bytes_to_regs(u32_to_bytes(bits), order);
         if (!words) {
             return std::unexpected(words.error());
@@ -323,6 +375,11 @@ Translator::encode(const Tag& tag, const ScalarValue& engineering_value) {
         auto raw_d = invert_scale(*eng, tag);
         if (!raw_d) {
             return std::unexpected(raw_d.error());
+        }
+        if (std::abs(*raw_d) > static_cast<double>(std::numeric_limits<float>::max())) {
+            return std::unexpected(
+                Error{ErrorCode::InvalidArgument, "float32 value is out of range",
+                      "core.translator", false});
         }
         auto words = be_bytes_to_regs(float_to_bytes(static_cast<float>(*raw_d)), order);
         if (!words) {

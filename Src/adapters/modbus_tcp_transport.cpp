@@ -60,7 +60,7 @@ domain::Result<void> ModbusTcpTransport::connect(const ports::EndpointAddress& e
 
     timeval tv{};
     tv.tv_sec = response_timeout_ms_ / 1000;
-    tv.tv_usec = (response_timeout_ms_ % 1000) * 1000;
+    tv.tv_usec = static_cast<decltype(tv.tv_usec)>(response_timeout_ms_ % 1000) * 1000;
     setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
@@ -125,26 +125,33 @@ ModbusTcpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pd
         if (!result) {
             frame.error = result.error().message;
             if (result.error().protocol_status) {
-                frame.exception_code = *result.error().protocol_status;
+                frame.exception_code = result.error().protocol_status;
             }
         }
         lock.unlock();
         emit_frame(std::move(frame));
         return result;
     };
+    const auto protocol_failure = [&](std::string message) {
+        close();
+        return finish(std::unexpected(
+            make_err(domain::ErrorCode::Decoding, std::move(message), false)));
+    };
 
     std::size_t sent = 0;
     while (sent < req.size()) {
-        const auto n = ::send(fd_, req.data() + sent, req.size() - sent, 0);
+        const auto n = ::send(fd_, req.data() + sent, req.size() - sent, MSG_NOSIGNAL);
         if (n <= 0) {
             return finish(std::unexpected(make_err(domain::ErrorCode::Connection, "send failed")));
         }
         sent += static_cast<std::size_t>(n);
     }
 
-    std::uint8_t header[7];
+    std::uint8_t header[6];
     std::size_t got = 0;
     while (got < sizeof(header)) {
+        // Synchronous transport calls are serialized by mutex_ (ADR-0002).
+        // NOLINTNEXTLINE(clang-analyzer-unix.BlockInCriticalSection)
         const auto n = ::recv(fd_, header + got, sizeof(header) - got, 0);
         if (n == 0) {
             return finish(std::unexpected(make_err(domain::ErrorCode::Connection, "peer closed")));
@@ -159,12 +166,24 @@ ModbusTcpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pd
     }
 
     const std::uint16_t length = static_cast<std::uint16_t>((header[4] << 8) | header[5]);
-    if (length < 2) {
-        return finish(std::unexpected(make_err(domain::ErrorCode::Decoding, "bad MBAP length", false)));
+    const std::uint16_t response_tid =
+        static_cast<std::uint16_t>((header[0] << 8) | header[1]);
+    const std::uint16_t protocol_id =
+        static_cast<std::uint16_t>((header[2] << 8) | header[3]);
+    if (response_tid != tid) {
+        return protocol_failure("MBAP transaction id mismatch");
+    }
+    if (protocol_id != 0) {
+        return protocol_failure("invalid MBAP protocol id");
+    }
+    if (length < 2 || length > 254) {
+        return protocol_failure("bad MBAP length");
     }
     std::vector<std::uint8_t> body(length);
     got = 0;
     while (got < body.size()) {
+        // See the synchronous strand contract above.
+        // NOLINTNEXTLINE(clang-analyzer-unix.BlockInCriticalSection)
         const auto n = ::recv(fd_, body.data() + got, body.size() - got, 0);
         if (n == 0) {
             return finish(std::unexpected(make_err(domain::ErrorCode::Connection, "peer closed")));
@@ -183,14 +202,23 @@ ModbusTcpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pd
 
     // body[0] = unit, body[1] = function or exception
     if (body.size() < 2) {
-        return finish(std::unexpected(make_err(domain::ErrorCode::Decoding, "short PDU", false)));
+        return protocol_failure("short PDU");
+    }
+    if (body[0] != unit) {
+        return protocol_failure("MBAP unit id mismatch");
     }
     if (body[1] & 0x80u) {
+        if (body[1] != static_cast<std::uint8_t>(pdu[0] | 0x80u)) {
+            return protocol_failure("exception function mismatch");
+        }
         const int ex = body.size() > 2 ? body[2] : -1;
         domain::Error err =
             make_err(domain::ErrorCode::ModbusException, "modbus exception", true);
         err.protocol_status = ex;
         return finish(std::unexpected(err));
+    }
+    if (body[1] != pdu[0]) {
+        return protocol_failure("response function mismatch");
     }
     // Return PDU without unit id (function + data)
     return finish(std::vector<std::uint8_t>(body.begin() + 1, body.end()));
@@ -200,6 +228,10 @@ ModbusTcpTransport::read_registers(std::uint8_t function,
                                    std::uint8_t unit,
                                    std::uint16_t address,
                                    std::uint16_t quantity) {
+    if (quantity == 0 || quantity > 125) {
+        return std::unexpected(make_err(
+            domain::ErrorCode::InvalidArgument, "register quantity must be in [1, 125]", false));
+    }
     std::vector<std::uint8_t> pdu;
     pdu.push_back(function);
     append_u16(pdu, address);
@@ -209,10 +241,12 @@ ModbusTcpTransport::read_registers(std::uint8_t function,
         return std::unexpected(resp.error());
     }
     if (resp->size() < 2) {
+        close();
         return std::unexpected(make_err(domain::ErrorCode::Decoding, "short register response", false));
     }
     const auto byte_count = (*resp)[1];
     if (resp->size() < 2u + byte_count || byte_count != quantity * 2) {
+        close();
         return std::unexpected(make_err(domain::ErrorCode::Decoding, "register byte count mismatch", false));
     }
     std::vector<std::uint16_t> out;
@@ -230,6 +264,10 @@ ModbusTcpTransport::read_bits(std::uint8_t function,
                               std::uint8_t unit,
                               std::uint16_t address,
                               std::uint16_t quantity) {
+    if (quantity == 0 || quantity > 2000) {
+        return std::unexpected(make_err(
+            domain::ErrorCode::InvalidArgument, "bit quantity must be in [1, 2000]", false));
+    }
     std::vector<std::uint8_t> pdu;
     pdu.push_back(function);
     append_u16(pdu, address);
@@ -239,10 +277,13 @@ ModbusTcpTransport::read_bits(std::uint8_t function,
         return std::unexpected(resp.error());
     }
     if (resp->size() < 2) {
+        close();
         return std::unexpected(make_err(domain::ErrorCode::Decoding, "short bit response", false));
     }
     const auto byte_count = (*resp)[1];
-    if (resp->size() < 2u + byte_count) {
+    const auto expected_byte_count = static_cast<std::uint8_t>((quantity + 7u) / 8u);
+    if (byte_count != expected_byte_count || resp->size() != 2u + byte_count) {
+        close();
         return std::unexpected(make_err(domain::ErrorCode::Decoding, "bit byte count mismatch", false));
     }
     std::vector<bool> out;
@@ -292,6 +333,11 @@ ModbusTcpTransport::write_single_register(std::uint8_t unit,
     if (!resp) {
         return std::unexpected(resp.error());
     }
+    if (*resp != pdu) {
+        close();
+        return std::unexpected(
+            make_err(domain::ErrorCode::Decoding, "single-register write echo mismatch", false));
+    }
     return {};
 }
 
@@ -299,6 +345,10 @@ domain::Result<void>
 ModbusTcpTransport::write_multiple_registers(std::uint8_t unit,
                                              std::uint16_t address,
                                              std::span<const std::uint16_t> values) {
+    if (values.empty() || values.size() > 123) {
+        return std::unexpected(make_err(
+            domain::ErrorCode::InvalidArgument, "write quantity must be in [1, 123]", false));
+    }
     std::vector<std::uint8_t> pdu;
     pdu.push_back(0x10);
     append_u16(pdu, address);
@@ -310,6 +360,14 @@ ModbusTcpTransport::write_multiple_registers(std::uint8_t unit,
     auto resp = transact(unit, pdu);
     if (!resp) {
         return std::unexpected(resp.error());
+    }
+    std::vector<std::uint8_t> expected{0x10};
+    append_u16(expected, address);
+    append_u16(expected, static_cast<std::uint16_t>(values.size()));
+    if (*resp != expected) {
+        close();
+        return std::unexpected(
+            make_err(domain::ErrorCode::Decoding, "multiple-register write echo mismatch", false));
     }
     return {};
 }
@@ -323,6 +381,11 @@ ModbusTcpTransport::write_single_coil(std::uint8_t unit, std::uint16_t address, 
     auto resp = transact(unit, pdu);
     if (!resp) {
         return std::unexpected(resp.error());
+    }
+    if (*resp != pdu) {
+        close();
+        return std::unexpected(
+            make_err(domain::ErrorCode::Decoding, "single-coil write echo mismatch", false));
     }
     return {};
 }

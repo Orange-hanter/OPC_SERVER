@@ -8,7 +8,7 @@ ADR фиксируют **существенные** решения: контек
 | [0001](0001-hexagonal-architecture.md) | Hexagonal / Ports & Adapters | Accepted |
 | [0002](0002-concurrency-model.md) | Модель конкурентности (Asio strands) | Accepted |
 | [0003](0003-error-handling.md) | Ошибки и `Result` | Accepted |
-| [0004](0004-testing-strategy.md) | Пирамида тестов | Accepted |
+| [0004](0004-testing-strategy.md) | Пирамида тестов (обновлён 2026-08-13) | Accepted |
 | [0005](0005-config-immutability.md) | Иммутабельность проекта карт | Accepted |
 | [0006](0006-tagstore-data-model.md) | TagStore и модель значения | Accepted |
 | [0007](0007-modbus-transport-port.md) | Абстракция Modbus transport | Accepted |

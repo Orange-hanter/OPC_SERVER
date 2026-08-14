@@ -1,0 +1,212 @@
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+
+#include "adapters/frame_replay.hpp"
+#include "adapters/manual_clock.hpp"
+#include "adapters/memory_metrics.hpp"
+#include "core/dispatcher.hpp"
+#include "core/runtime_index.hpp"
+#include "core/tag_store.hpp"
+#include "project/load.hpp"
+
+using opc::adapters::ReplayModbusTransport;
+using opc::core::Dispatcher;
+using opc::core::RuntimeIndex;
+using opc::core::TagStore;
+
+namespace {
+
+std::shared_ptr<const opc::project::Project> uint16_project() {
+    constexpr std::string_view kJson = R"({
+      "schemaVersion": 1,
+      "name": "replay",
+      "endpoints": [
+        {"id": "ep1", "host": "127.0.0.1", "port": 1502, "transport": "tcp"}
+      ],
+      "devices": [
+        {"id": "d1", "endpointId": "ep1", "unitId": 1, "tags": [
+          {"name": "Count", "area": "holding", "address": 0, "type": "uint16",
+           "byteOrder": "AB", "group": "g1"}
+        ]}
+      ],
+      "pollGroups": [
+        {"id": "g1", "periodMs": 50, "priority": "fast", "deviceId": "d1", "tagNames": ["Count"]}
+      ]
+    })";
+    auto loaded = opc::project::load_json_text(kJson, "replay.json");
+    REQUIRE(loaded.ok);
+    return std::make_shared<opc::project::Project>(std::move(loaded.project));
+}
+
+opc::ports::FrameRecord holding_read_frame(std::uint16_t value) {
+    opc::ports::FrameRecord frame;
+    frame.ts_ms = 1;
+    frame.endpoint_id = "ep1";
+    // TX MBAP + FC03 addr=0 qty=1
+    frame.tx = {0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x01, 0x03, 0x00, 0x00, 0x00, 0x01};
+    // RX MBAP + unit + FC03 + 2 bytes + value
+    frame.rx = {0x00, 0x01, 0x00, 0x00, 0x00, 0x05, 0x01, 0x03, 0x02,
+                static_cast<std::uint8_t>(value >> 8), static_cast<std::uint8_t>(value & 0xFF)};
+    return frame;
+}
+
+}  // namespace
+
+TEST_CASE("ReplayModbusTransport returns recorded holding registers", "[component][adapters][replay]") {
+    ReplayModbusTransport transport({holding_read_frame(42)});
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+    auto regs = transport.read_holding_registers(1, 0, 1);
+    REQUIRE(regs);
+    REQUIRE(regs->size() == 1);
+    CHECK((*regs)[0] == 42);
+    CHECK(transport.remaining() == 0);
+}
+
+TEST_CASE("Dispatcher poll via frame replay", "[component][adapters][replay][dispatcher]") {
+    auto project = uint16_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+    TagStore store;
+    opc::adapters::ManualClock clock{1000};
+    opc::adapters::MemoryMetrics metrics;
+    ReplayModbusTransport transport({holding_read_frame(99)});
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+    });
+    dispatcher.bind_transport("ep1", &transport);
+    REQUIRE(dispatcher.poll_due("ep1", 1000));
+
+    auto binding = index.find_by_name("Count");
+    REQUIRE(binding);
+    auto value = store.get(binding->id);
+    REQUIRE(value);
+    REQUIRE(std::get<std::uint16_t>(value->value) == 99);
+    CHECK(metrics.counter("modbus_poll_rtt_ms.count") == Catch::Approx(1.0));
+}
+
+TEST_CASE("parse_frame_log_line rejects comments", "[component][adapters][replay]") {
+    auto parsed = opc::adapters::parse_frame_log_line("# header");
+    REQUIRE_FALSE(parsed);
+}
+
+TEST_CASE("ReplayModbusTransport reports connection state and exhaustion",
+          "[component][adapters][replay]") {
+    ReplayModbusTransport transport({holding_read_frame(7)});
+
+    auto disconnected = transport.read_holding_registers(1, 0, 1);
+    REQUIRE_FALSE(disconnected);
+    CHECK(disconnected.error().code == opc::domain::ErrorCode::Connection);
+    CHECK(disconnected.error().retryable);
+
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+    REQUIRE(transport.read_holding_registers(1, 0, 1));
+    auto exhausted = transport.read_holding_registers(1, 0, 1);
+    REQUIRE_FALSE(exhausted);
+    CHECK(exhausted.error().code == opc::domain::ErrorCode::NotFound);
+
+    transport.close();
+    CHECK_FALSE(transport.is_connected());
+}
+
+TEST_CASE("ReplayModbusTransport preserves recorded transport and Modbus errors",
+          "[component][adapters][replay]") {
+    opc::ports::FrameRecord connection_error;
+    connection_error.error = "peer reset";
+
+    opc::ports::FrameRecord modbus_error;
+    modbus_error.exception_code = 3;
+
+    ReplayModbusTransport transport({connection_error, modbus_error});
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+
+    auto first = transport.read_holding_registers(1, 0, 1);
+    REQUIRE_FALSE(first);
+    CHECK(first.error().code == opc::domain::ErrorCode::Connection);
+    CHECK(first.error().message == "peer reset");
+    CHECK(first.error().retryable);
+
+    auto second = transport.read_holding_registers(1, 0, 1);
+    REQUIRE_FALSE(second);
+    CHECK(second.error().code == opc::domain::ErrorCode::ModbusException);
+    REQUIRE(second.error().protocol_status);
+    CHECK(*second.error().protocol_status == 3);
+}
+
+TEST_CASE("ReplayModbusTransport rejects malformed replay responses",
+          "[component][adapters][replay]") {
+    auto short_rx = holding_read_frame(1);
+    short_rx.rx.resize(7);
+
+    auto wrong_mbap_length = holding_read_frame(2);
+    wrong_mbap_length.rx[5] = 0x06;
+
+    auto wrong_byte_count = holding_read_frame(3);
+    wrong_byte_count.rx[8] = 0x04;
+
+    ReplayModbusTransport transport({short_rx, wrong_mbap_length, wrong_byte_count});
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+
+    for (int i = 0; i < 3; ++i) {
+        CAPTURE(i);
+        auto result = transport.read_holding_registers(1, 0, 1);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().code == opc::domain::ErrorCode::Decoding);
+    }
+    CHECK(transport.remaining() == 0);
+}
+
+TEST_CASE("ReplayModbusTransport decodes packed bits across byte boundary",
+          "[component][adapters][replay]") {
+    opc::ports::FrameRecord frame;
+    frame.rx = {0x00, 0x01, 0x00, 0x00, 0x00, 0x05, 0x01, 0x01, 0x02, 0x55, 0x03};
+
+    ReplayModbusTransport transport({frame});
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+    auto bits = transport.read_coils(1, 0, 10);
+
+    REQUIRE(bits);
+    REQUIRE(bits->size() == 10);
+    CHECK((*bits)[0]);
+    CHECK_FALSE((*bits)[1]);
+    CHECK((*bits)[8]);
+    CHECK((*bits)[9]);
+}
+
+TEST_CASE("parse_frame_log_line parses metadata and mixed-case hex",
+          "[component][adapters][replay]") {
+    auto parsed = opc::adapters::parse_frame_log_line(
+        "  123 ep7 2.5 4 \"timeout\" 0a FF | 01 bC  ");
+
+    REQUIRE(parsed);
+    CHECK(parsed->ts_ms == 123);
+    CHECK(parsed->endpoint_id == "ep7");
+    CHECK(parsed->rtt_ms == Catch::Approx(2.5));
+    REQUIRE(parsed->exception_code);
+    CHECK(*parsed->exception_code == 4);
+    REQUIRE(parsed->error);
+    CHECK(*parsed->error == "timeout");
+    CHECK(parsed->tx == std::vector<std::uint8_t>{0x0A, 0xFF});
+    CHECK(parsed->rx == std::vector<std::uint8_t>{0x01, 0xBC});
+}
+
+TEST_CASE("parse_frame_log_line rejects malformed journal fields",
+          "[component][adapters][replay]") {
+    const std::vector<std::string_view> invalid = {
+        "",
+        "123 ep 1 - - 00",
+        "bad prefix | 00",
+        "123 ep 1 nope - 00 | 00",
+        "123 ep 1 - - 0 | 00",
+        "123 ep 1 - - 0g | 00",
+        "123 ep 1 - - 00 | f",
+    };
+
+    for (const auto line : invalid) {
+        CAPTURE(line);
+        CHECK_FALSE(opc::adapters::parse_frame_log_line(line));
+    }
+}

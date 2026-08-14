@@ -66,7 +66,7 @@ domain::Result<std::vector<std::uint8_t>> pdu_from_rx(const ports::FrameRecord& 
     }
     if (frame.exception_code) {
         domain::Error err = replay_err(domain::ErrorCode::ModbusException, "modbus exception", true);
-        err.protocol_status = *frame.exception_code;
+        err.protocol_status = frame.exception_code;
         return std::unexpected(err);
     }
     if (frame.rx.size() < 8) {

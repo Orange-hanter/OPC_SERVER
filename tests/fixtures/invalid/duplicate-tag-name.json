@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "name": "dup-names",
+  "endpoints": [
+    {"id": "ep1", "host": "127.0.0.1", "port": 502, "transport": "tcp"}
+  ],
+  "devices": [
+    {
+      "id": "d1",
+      "endpointId": "ep1",
+      "unitId": 1,
+      "tags": [
+        {
+          "name": "Shared",
+          "area": "holding",
+          "address": 0,
+          "type": "uint16",
+          "byteOrder": "AB",
+          "group": "g1"
+        }
+      ]
+    },
+    {
+      "id": "d2",
+      "endpointId": "ep1",
+      "unitId": 2,
+      "tags": [
+        {
+          "name": "Shared",
+          "area": "holding",
+          "address": 0,
+          "type": "uint16",
+          "byteOrder": "AB",
+          "group": "g2"
+        }
+      ]
+    }
+  ],
+  "pollGroups": [
+    {"id": "g1", "periodMs": 200, "priority": "normal", "deviceId": "d1", "tagNames": ["Shared"]},
+    {"id": "g2", "periodMs": 200, "priority": "normal", "deviceId": "d2", "tagNames": ["Shared"]}
+  ]
+}

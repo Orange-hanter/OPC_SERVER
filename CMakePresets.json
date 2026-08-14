@@ -58,6 +58,48 @@
       }
     },
     {
+      "name": "tsan",
+      "displayName": "TSan",
+      "description": "Debug build with ThreadSanitizer for TagStore/Dispatcher",
+      "inherits": "dev",
+      "cacheVariables": {
+        "OPC_ENABLE_TSAN": true
+      }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Coverage",
+      "description": "Debug build with gcov instrumentation for domain/core/project",
+      "inherits": "dev",
+      "cacheVariables": {
+        "OPC_ENABLE_COVERAGE": true
+      }
+    },
+    {
+      "name": "static-analysis",
+      "displayName": "Clang warnings + clang-tidy + cppcheck",
+      "description": "Clang build with warnings-as-errors and two static analyzers",
+      "inherits": "dev",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "OPC_WARNINGS_AS_ERRORS": true,
+        "OPC_ENABLE_CLANG_TIDY": true,
+        "OPC_ENABLE_CPPCHECK": true
+      }
+    },
+    {
+      "name": "valgrind",
+      "displayName": "Valgrind Memcheck build",
+      "description": "RelWithDebInfo tests for Valgrind Memcheck",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BUILD_TESTING": true,
+        "OPC_ENABLE_WARNINGS": true
+      }
+    },
+    {
       "name": "unity",
       "displayName": "Unity build + PCH",
       "description": "Demonstrates CMake unity builds and precompiled headers",
@@ -90,6 +132,26 @@
       "jobs": 0
     },
     {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "jobs": 0
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "jobs": 0
+    },
+    {
+      "name": "static-analysis",
+      "configurePreset": "static-analysis",
+      "jobs": 0
+    },
+    {
+      "name": "valgrind",
+      "configurePreset": "valgrind",
+      "jobs": 0
+    },
+    {
       "name": "unity",
       "configurePreset": "unity",
       "jobs": 0
@@ -111,6 +173,21 @@
     {
       "name": "asan",
       "configurePreset": "asan",
+      "inherits": "dev"
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "inherits": "dev"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "inherits": "dev"
+    },
+    {
+      "name": "valgrind",
+      "configurePreset": "valgrind",
       "inherits": "dev"
     },
     {
@@ -167,6 +244,24 @@
         {
           "type": "test",
           "name": "asan"
+        }
+      ]
+    },
+    {
+      "name": "tsan",
+      "description": "Configure, build, and test with ThreadSanitizer",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "tsan"
+        },
+        {
+          "type": "build",
+          "name": "tsan"
+        },
+        {
+          "type": "test",
+          "name": "tsan"
         }
       ]
     }

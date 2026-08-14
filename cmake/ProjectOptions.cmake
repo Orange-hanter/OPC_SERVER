@@ -9,7 +9,7 @@ function(opc_configure_project_options)
   if(OPC_ENABLE_WARNINGS)
     target_compile_options(opc_project_options INTERFACE
       "$<$<CXX_COMPILER_ID:MSVC>:/W4;/permissive->"
-      "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion>"
+      "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wno-missing-field-initializers>"
     )
   endif()
 
@@ -18,6 +18,10 @@ function(opc_configure_project_options)
       "$<$<CXX_COMPILER_ID:MSVC>:/WX>"
       "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Werror>"
     )
+  endif()
+
+  if(OPC_ENABLE_SANITIZERS AND OPC_ENABLE_TSAN)
+    message(FATAL_ERROR "OPC_ENABLE_SANITIZERS and OPC_ENABLE_TSAN cannot be combined")
   endif()
 
   if(OPC_ENABLE_SANITIZERS)
@@ -36,6 +40,30 @@ function(opc_configure_project_options)
     endif()
   endif()
 
+  if(OPC_ENABLE_TSAN)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_compile_options(opc_project_options INTERFACE
+        -fsanitize=thread
+        -fno-omit-frame-pointer
+      )
+      target_link_options(opc_project_options INTERFACE
+        -fsanitize=thread
+        -fno-omit-frame-pointer
+      )
+    else()
+      message(FATAL_ERROR "OPC_ENABLE_TSAN currently supports GCC and Clang only.")
+    endif()
+  endif()
+
+  if(OPC_ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_compile_options(opc_project_options INTERFACE --coverage -O0 -g)
+      target_link_options(opc_project_options INTERFACE --coverage)
+    else()
+      message(FATAL_ERROR "OPC_ENABLE_COVERAGE currently supports GCC and Clang only.")
+    endif()
+  endif()
+
   if(OPC_ENABLE_IPO)
     check_ipo_supported(RESULT _opc_ipo_supported OUTPUT _opc_ipo_error)
     if(NOT _opc_ipo_supported)
@@ -45,6 +73,10 @@ function(opc_configure_project_options)
 
   if(OPC_ENABLE_CLANG_TIDY)
     find_program(OPC_CLANG_TIDY_EXECUTABLE NAMES clang-tidy REQUIRED)
+  endif()
+
+  if(OPC_ENABLE_CPPCHECK)
+    find_program(OPC_CPPCHECK_EXECUTABLE NAMES cppcheck REQUIRED)
   endif()
 endfunction()
 
@@ -71,5 +103,15 @@ function(opc_apply_project_options target)
   if(OPC_ENABLE_CLANG_TIDY)
     set_property(TARGET "${target}" PROPERTY CXX_CLANG_TIDY
       "${OPC_CLANG_TIDY_EXECUTABLE};--use-color")
+  endif()
+
+  if(OPC_ENABLE_CPPCHECK)
+    set_property(TARGET "${target}" PROPERTY CXX_CPPCHECK
+      "${OPC_CPPCHECK_EXECUTABLE}"
+      "--enable=warning,performance,portability"
+      "--error-exitcode=2"
+      "--inline-suppr"
+      "--suppress=missingIncludeSystem"
+      "--std=c++23")
   endif()
 endfunction()

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "name": "minimal-valid",
+  "endpoints": [
+    {"id": "ep1", "host": "127.0.0.1", "port": 502, "transport": "tcp"}
+  ],
+  "devices": [
+    {
+      "id": "d1",
+      "endpointId": "ep1",
+      "unitId": 1,
+      "tags": [
+        {
+          "name": "A",
+          "nodePath": "Plant/A",
+          "area": "holding",
+          "address": 0,
+          "type": "uint16",
+          "byteOrder": "AB",
+          "group": "g1"
+        }
+      ]
+    }
+  ],
+  "pollGroups": [
+    {"id": "g1", "periodMs": 200, "priority": "normal", "deviceId": "d1", "tagNames": ["A"]}
+  ]
+}

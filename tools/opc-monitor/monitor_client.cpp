@@ -150,8 +150,10 @@ struct MonitorClient::Impl {
     }
 
     ~Impl() {
-        close(false);
         if (client != nullptr) {
+            if (connected) {
+                UA_Client_disconnect(client);
+            }
             UA_Client_delete(client);
         }
     }
@@ -538,9 +540,7 @@ struct MonitorClient::Impl {
             subscribe(command);
         } else if (name == "unsubscribe") {
             unsubscribe(command);
-        } else if (name == "disconnect") {
-            close(true, &command);
-        } else if (name == "shutdown") {
+        } else if (name == "disconnect" || name == "shutdown") {
             close(true, &command);
         } else {
             emit_error("unknown command: " + name, UA_STATUSCODE_BADNOTSUPPORTED, &command);
