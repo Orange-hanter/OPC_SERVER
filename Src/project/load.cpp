@@ -251,6 +251,40 @@ Project parse_project(const json& root, std::vector<Diagnostic>& diags) {
         if (o.contains("namespaceUri") && o["namespaceUri"].is_string()) {
             project.opcua.namespace_uri = o["namespaceUri"].get<std::string>();
         }
+        if (o.contains("users") && o["users"].is_array()) {
+            std::size_t ui = 0;
+            for (const auto& item : o["users"]) {
+                const std::string path = "opcua.users[" + std::to_string(ui++) + "]";
+                OpcUaUser user;
+                if (!item.is_object()) {
+                    add_error(diags, path, "must be object with username/password");
+                    continue;
+                }
+                if (!item.contains("username") || !item["username"].is_string() ||
+                    item["username"].get<std::string>().empty()) {
+                    add_error(diags, path + ".username", "required non-empty string");
+                } else {
+                    user.username = item["username"].get<std::string>();
+                }
+                if (!item.contains("password") || !item["password"].is_string()) {
+                    add_error(diags, path + ".password", "required string");
+                } else {
+                    user.password = item["password"].get<std::string>();
+                }
+                if (!user.username.empty()) {
+                    project.opcua.users.push_back(std::move(user));
+                }
+            }
+        }
+        if (o.contains("allowAnonymous") && o["allowAnonymous"].is_boolean()) {
+            project.opcua.allow_anonymous = o["allowAnonymous"].get<bool>();
+        } else if (!project.opcua.users.empty()) {
+            // Fail-closed when identity is configured: anonymous off unless explicitly enabled.
+            project.opcua.allow_anonymous = false;
+        }
+        if (o.contains("allowNonePassword") && o["allowNonePassword"].is_boolean()) {
+            project.opcua.allow_none_password = o["allowNonePassword"].get<bool>();
+        }
     }
 
     if (!root.contains("endpoints") || !root["endpoints"].is_array() || root["endpoints"].empty()) {

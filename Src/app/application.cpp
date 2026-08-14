@@ -142,6 +142,31 @@ bool Application::init(const CliOptions& options) {
         return false;
     }
 
+    // CLI identity overlays: clone so const project can carry merged users / anonymous policy.
+    if (!options_.ua_users.empty() || options_.ua_deny_anonymous || options_.ua_allow_anonymous ||
+        options_.ua_allow_none_password) {
+        auto mutable_project = std::make_shared<project::Project>(**project);
+        for (const auto& user : options_.ua_users) {
+            mutable_project->opcua.users.push_back(
+                project::OpcUaUser{.username = user.username, .password = user.password});
+        }
+        if (!options_.ua_users.empty() && !options_.ua_allow_anonymous &&
+            !options_.ua_deny_anonymous) {
+            // Same fail-closed default as project load when users appear without allowAnonymous.
+            mutable_project->opcua.allow_anonymous = false;
+        }
+        if (options_.ua_deny_anonymous) {
+            mutable_project->opcua.allow_anonymous = false;
+        }
+        if (options_.ua_allow_anonymous) {
+            mutable_project->opcua.allow_anonymous = true;
+        }
+        if (options_.ua_allow_none_password) {
+            mutable_project->opcua.allow_none_password = true;
+        }
+        *project = std::move(mutable_project);
+    }
+
     if (!options_.frame_log_path.empty()) {
         auto file_log = std::make_unique<adapters::FileFrameLog>(options_.frame_log_path);
         if (!file_log->is_open()) {

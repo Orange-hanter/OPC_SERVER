@@ -340,10 +340,10 @@ async fn monitor_connect(
     {
         return Err("Unsupported security mode".to_owned());
     }
-    if profile
-        .certificate_path
-        .as_deref()
-        .is_some_and(|path| path.len() > 4096)
+    if (profile
+            .certificate_path
+            .as_deref()
+            .is_some_and(|path| path.len() > 4096)
         || profile
             .private_key_path
             .as_deref()
@@ -354,13 +354,13 @@ async fn monitor_connect(
     if profile
         .username
         .as_deref()
-        .is_some_and(|value| !value.is_empty())
+        .is_some_and(|value| value.len() > 256)
         || profile
             .password
             .as_deref()
-            .is_some_and(|value| !value.is_empty())
+            .is_some_and(|value| value.len() > 1024)
     {
-        return Err("Username authentication is not enabled in opc-monitor v1".to_owned());
+        return Err("Username/password are too long".to_owned());
     }
     send_monitor_command(
         &app,
@@ -372,6 +372,8 @@ async fn monitor_connect(
             "securityMode": profile.security_mode,
             "certificate": profile.certificate_path,
             "privateKey": profile.private_key_path,
+            "username": profile.username,
+            "password": profile.password,
         }),
     )
     .await
