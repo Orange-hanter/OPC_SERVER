@@ -104,6 +104,9 @@ export interface ConnectionProfile {
   password?: string
   certificatePath?: string
   privateKeyPath?: string
+  /** X509IdentityToken user certificate (distinct from channel application cert). */
+  userCertificatePath?: string
+  userPrivateKeyPath?: string
 }
 
 export interface UaNode {

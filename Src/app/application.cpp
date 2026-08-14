@@ -144,17 +144,20 @@ bool Application::init(const CliOptions& options) {
 
     // CLI identity overlays: clone so const project can carry merged users / anonymous policy.
     if (!options_.ua_users.empty() || options_.ua_deny_anonymous || options_.ua_allow_anonymous ||
-        options_.ua_allow_none_password) {
+        options_.ua_allow_none_password || options_.ua_allow_certificate_identity ||
+        options_.ua_allow_none_certificate) {
         const bool had_users = !(*project)->opcua.users.empty();
+        const bool had_cert_identity = (*project)->opcua.allow_certificate_identity;
         auto mutable_project = std::make_shared<project::Project>(**project);
         for (const auto& user : options_.ua_users) {
             mutable_project->opcua.users.push_back(
                 project::OpcUaUser{.username = user.username, .password = user.password});
         }
-        // Fail-closed only when CLI introduces the first users (same as project load default).
+        // Fail-closed only when CLI introduces the first identity (same as project load default).
         // Do not clobber an explicit project allowAnonymous:true when adding more users.
-        if (!options_.ua_users.empty() && !had_users && !options_.ua_allow_anonymous &&
-            !options_.ua_deny_anonymous) {
+        if (((!options_.ua_users.empty() && !had_users) ||
+             (options_.ua_allow_certificate_identity && !had_cert_identity)) &&
+            !options_.ua_allow_anonymous && !options_.ua_deny_anonymous) {
             mutable_project->opcua.allow_anonymous = false;
         }
         if (options_.ua_deny_anonymous) {
@@ -165,6 +168,12 @@ bool Application::init(const CliOptions& options) {
         }
         if (options_.ua_allow_none_password) {
             mutable_project->opcua.allow_none_password = true;
+        }
+        if (options_.ua_allow_certificate_identity) {
+            mutable_project->opcua.allow_certificate_identity = true;
+        }
+        if (options_.ua_allow_none_certificate) {
+            mutable_project->opcua.allow_none_certificate = true;
         }
         *project = std::move(mutable_project);
     }

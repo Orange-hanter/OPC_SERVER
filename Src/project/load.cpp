@@ -276,9 +276,15 @@ Project parse_project(const json& root, std::vector<Diagnostic>& diags) {
                 }
             }
         }
+        if (o.contains("allowCertificateIdentity") && o["allowCertificateIdentity"].is_boolean()) {
+            project.opcua.allow_certificate_identity = o["allowCertificateIdentity"].get<bool>();
+        }
+        if (o.contains("allowNoneCertificate") && o["allowNoneCertificate"].is_boolean()) {
+            project.opcua.allow_none_certificate = o["allowNoneCertificate"].get<bool>();
+        }
         if (o.contains("allowAnonymous") && o["allowAnonymous"].is_boolean()) {
             project.opcua.allow_anonymous = o["allowAnonymous"].get<bool>();
-        } else if (!project.opcua.users.empty()) {
+        } else if (!project.opcua.users.empty() || project.opcua.allow_certificate_identity) {
             // Fail-closed when identity is configured: anonymous off unless explicitly enabled.
             project.opcua.allow_anonymous = false;
         }

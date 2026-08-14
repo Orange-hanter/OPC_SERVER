@@ -40,6 +40,8 @@ struct CliOptions {
     bool ua_deny_anonymous{false};
     bool ua_allow_anonymous{false};
     bool ua_allow_none_password{false};  // lab: username over SecurityMode None
+    bool ua_allow_certificate_identity{false};
+    bool ua_allow_none_certificate{false};  // lab: X509IdentityToken over SecurityMode None
     bool help{false};
     bool version{false};
     std::vector<std::string> errors;

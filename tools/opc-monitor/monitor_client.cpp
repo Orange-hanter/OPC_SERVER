@@ -353,10 +353,53 @@ struct MonitorClient::Impl {
             emit_connection("disconnected", UA_STATUSCODE_BADSECURITYCHECKSFAILED, command);
             return false;
         }
-        const auto status = username.empty()
-                                ? UA_Client_connect(client, endpoint.c_str())
-                                : UA_Client_connectUsername(client, endpoint.c_str(),
-                                                            username.c_str(), password.c_str());
+
+        UA_StatusCode status = UA_STATUSCODE_GOOD;
+        if (!user_certificate_path.empty() || !user_private_key_path.empty()) {
+#if defined(UA_ENABLE_ENCRYPTION_OPENSSL) || defined(UA_ENABLE_ENCRYPTION_MBEDTLS)
+            if (user_certificate_path.empty() || user_private_key_path.empty()) {
+                emit_error("userCertificate and userPrivateKey are both required for X509IdentityToken",
+                           UA_STATUSCODE_BADINVALIDARGUMENT, command);
+                connected = false;
+                emit_connection("disconnected", UA_STATUSCODE_BADINVALIDARGUMENT, command);
+                return false;
+            }
+            UA_ClientConfig* config = UA_Client_getConfig(client);
+            UA_ByteString cert = bytes_from_file(user_certificate_path);
+            UA_ByteString key = bytes_from_file(user_private_key_path);
+            if (cert.data == nullptr || key.data == nullptr) {
+                UA_ByteString_clear(&cert);
+                UA_ByteString_clear(&key);
+                emit_error("failed to read user identity certificate/key",
+                           UA_STATUSCODE_BADINVALIDARGUMENT, command);
+                connected = false;
+                emit_connection("disconnected", UA_STATUSCODE_BADINVALIDARGUMENT, command);
+                return false;
+            }
+            const auto auth = UA_ClientConfig_setAuthenticationCert(config, cert, key);
+            UA_ByteString_clear(&cert);
+            UA_ByteString_clear(&key);
+            if (auth != UA_STATUSCODE_GOOD) {
+                emit_error(std::string("failed to set X509IdentityToken: ") + UA_StatusCode_name(auth),
+                           auth, command);
+                connected = false;
+                emit_connection("disconnected", auth, command);
+                return false;
+            }
+            status = UA_Client_connect(client, endpoint.c_str());
+#else
+            emit_error("opc-monitor was built without certificate authentication support",
+                       UA_STATUSCODE_BADNOTIMPLEMENTED, command);
+            connected = false;
+            emit_connection("disconnected", UA_STATUSCODE_BADNOTIMPLEMENTED, command);
+            return false;
+#endif
+        } else if (!username.empty()) {
+            status = UA_Client_connectUsername(client, endpoint.c_str(), username.c_str(),
+                                              password.c_str());
+        } else {
+            status = UA_Client_connect(client, endpoint.c_str());
+        }
         if (status != UA_STATUSCODE_GOOD) {
             connected = false;
             emit_connection("disconnected", status, command);
@@ -385,6 +428,8 @@ struct MonitorClient::Impl {
         security_policy = command.value("securityPolicy", "None");
         certificate_path = command.value("certificate", "");
         private_key_path = command.value("privateKey", "");
+        user_certificate_path = command.value("userCertificate", "");
+        user_private_key_path = command.value("userPrivateKey", "");
         username.clear();
         password.clear();
         if (command.contains("username") && command["username"].is_string()) {
@@ -652,6 +697,8 @@ struct MonitorClient::Impl {
     std::string security_policy{"None"};
     std::string certificate_path;
     std::string private_key_path;
+    std::string user_certificate_path;
+    std::string user_private_key_path;
     std::string username;
     std::string password;
     bool security_ok{true};
