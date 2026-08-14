@@ -215,7 +215,15 @@ jobs:
 
       - name: Install Ninja on macOS
         if: runner.os == 'macOS'
-        run: brew install ninja sqlite
+        run: brew install ninja sqlite llvm openssl@3
+
+      - name: Install OpenSSL on Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install openssl --no-progress -y
+          echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=C:/Program Files/OpenSSL-Win64" >> "$GITHUB_ENV"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -232,9 +240,24 @@ jobs:
       - name: Build native sidecars
         shell: bash
         run: |
+          EXTRA_CMAKE_ARGS=()
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            LLVM_PREFIX="$(brew --prefix llvm)"
+            OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+            EXTRA_CMAKE_ARGS+=(
+              -DCMAKE_C_COMPILER="${LLVM_PREFIX}/bin/clang"
+              -DCMAKE_CXX_COMPILER="${LLVM_PREFIX}/bin/clang++"
+              -DOPENSSL_ROOT_DIR="${OPENSSL_PREFIX}"
+            )
+          elif [[ "${{ runner.os }}" == "Windows" ]]; then
+            EXTRA_CMAKE_ARGS+=(
+              -DOPENSSL_ROOT_DIR="${OPENSSL_ROOT_DIR}"
+            )
+          fi
           cmake -S . -B build-studio -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=OFF
+            -DBUILD_TESTING=OFF \
+            "${EXTRA_CMAKE_ARGS[@]}"
           cmake --build build-studio --target opc-map opc-monitor --parallel
           mkdir -p frontend/apps/studio/src-tauri/binaries
           cp "build-studio/tools/opc-map/opc-map${{ matrix.suffix }}" \

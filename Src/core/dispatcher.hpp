@@ -61,6 +61,8 @@ private:
     [[nodiscard]] std::unique_ptr<ports::ISpan> start_span(std::string_view name) const;
 
     Dependencies deps_;
+    /// Protects transports_ / last_poll_ms_ across endpoint strands (ADR-0002).
+    mutable std::mutex state_mutex_;
     std::unordered_map<std::string, ports::IModbusTransport*> transports_;
     std::unordered_map<std::string, domain::TimestampMs> last_poll_ms_;
 

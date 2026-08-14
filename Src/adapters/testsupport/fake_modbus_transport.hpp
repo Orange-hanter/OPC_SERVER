@@ -2,6 +2,7 @@
 
 #include "ports/i_modbus_transport.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <optional>
 #include <thread>
@@ -13,25 +14,27 @@ namespace opc::adapters::testsupport {
 class FakeModbusTransport final : public ports::IModbusTransport {
 public:
     domain::Result<void> connect(const ports::EndpointAddress&) override {
-        ++connect_attempts_;
+        connect_attempts_.fetch_add(1, std::memory_order_relaxed);
         if (connect_result_.has_value()) {
             auto result = *connect_result_;
             if (result) {
-                connected_ = true;
+                connected_.store(true, std::memory_order_relaxed);
             }
             return result;
         }
-        connected_ = true;
+        connected_.store(true, std::memory_order_relaxed);
         return {};
     }
 
-    void close() override { connected_ = false; }
+    void close() override { connected_.store(false, std::memory_order_relaxed); }
 
-    [[nodiscard]] bool is_connected() const override { return connected_; }
+    [[nodiscard]] bool is_connected() const override {
+        return connected_.load(std::memory_order_relaxed);
+    }
 
     domain::Result<std::vector<std::uint16_t>>
     read_holding_registers(std::uint8_t, std::uint16_t address, std::uint16_t quantity) override {
-        if (!connected_) {
+        if (!connected_.load(std::memory_order_relaxed)) {
             return std::unexpected(domain::Error{
                 domain::ErrorCode::Connection, "not connected", "fake.modbus", true});
         }
@@ -110,7 +113,9 @@ public:
 
     void set_read_delay(std::chrono::milliseconds delay) { read_delay_ = delay; }
     void set_connect_result(domain::Result<void> result) { connect_result_ = std::move(result); }
-    [[nodiscard]] int connect_attempts() const { return connect_attempts_; }
+    [[nodiscard]] int connect_attempts() const {
+        return connect_attempts_.load(std::memory_order_relaxed);
+    }
     [[nodiscard]] int fc05_writes() const { return fc05_writes_; }
     [[nodiscard]] int fc15_writes() const { return fc15_writes_; }
 
@@ -121,10 +126,10 @@ private:
         }
     }
 
-    bool connected_{false};
+    std::atomic<bool> connected_{false};
     std::chrono::milliseconds read_delay_{0};
     std::optional<domain::Result<void>> connect_result_;
-    int connect_attempts_{0};
+    std::atomic<int> connect_attempts_{0};
     int fc05_writes_{0};
     int fc15_writes_{0};
     std::unordered_map<std::uint16_t, std::uint16_t> holding_;

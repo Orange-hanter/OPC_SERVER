@@ -38,7 +38,7 @@
 
 | Компонент | Выбор |
 |-----------|--------|
-| Ядро UA | **open62541** 1.4.11 FetchContent (`UA_ENABLE_ENCRYPTION=OPENSSL`) или Conan 1.5 (`encryption=openssl`) |
+| Ядро UA | **open62541** 1.4.11 FetchContent (`UA_ENABLE_ENCRYPTION=OPENSSL`; всегда FetchContent — Conan-пакеты без plugin headers) |
 | C++ слой | Тонкая обёртка на C++26 **или** [open62541pp](https://github.com/open62541pp/open62541pp) как база |
 
 Сервер использует Information Model из проекта; Subscriptions — через API open62541.
