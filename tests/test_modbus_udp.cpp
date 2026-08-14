@@ -39,12 +39,15 @@ public:
     ~UdpHoldingSlave() {
         run_ = false;
         if (fd_ >= 0) {
+            // Unblock recvfrom without racing close against the worker thread.
             ::shutdown(fd_, SHUT_RDWR);
-            ::close(fd_);
-            fd_ = -1;
         }
         if (thread_.joinable()) {
             thread_.join();
+        }
+        if (fd_ >= 0) {
+            ::close(fd_);
+            fd_ = -1;
         }
     }
 
