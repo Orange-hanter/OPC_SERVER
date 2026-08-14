@@ -57,6 +57,13 @@ void publish_quality(ports::ITagStore* store,
 
 Dispatcher::Dispatcher(Dependencies deps) : deps_(std::move(deps)) {}
 
+std::unique_ptr<ports::ISpan> Dispatcher::start_span(std::string_view name) const {
+    if (deps_.tracer == nullptr) {
+        return nullptr;
+    }
+    return deps_.tracer->start_span(name);
+}
+
 void Dispatcher::bind_transport(std::string endpoint_id, ports::IModbusTransport* transport) {
     transports_[std::move(endpoint_id)] = transport;
 }
@@ -208,8 +215,15 @@ domain::Result<void> Dispatcher::poll_group(const project::PollGroup& group,
 }
 
 domain::Result<void> Dispatcher::poll_due(std::string_view endpoint_id, domain::TimestampMs now) {
+    auto span = start_span("modbus.poll");
+    if (span) {
+        span->set_attribute("endpoint_id", endpoint_id);
+    }
     auto it = transports_.find(std::string(endpoint_id));
     if (it == transports_.end() || it->second == nullptr) {
+        if (span) {
+            span->set_error("transport not bound");
+        }
         return std::unexpected(domain::Error{
             domain::ErrorCode::NotFound, "transport not bound", "core.dispatcher", false});
     }
@@ -217,17 +231,26 @@ domain::Result<void> Dispatcher::poll_due(std::string_view endpoint_id, domain::
     if (!transport.is_connected()) {
         const auto* ep = deps_.index.endpoint(endpoint_id);
         if (ep == nullptr) {
+            if (span) {
+                span->set_error("endpoint missing");
+            }
             return std::unexpected(domain::Error{
                 domain::ErrorCode::NotFound, "endpoint missing", "core.dispatcher", false});
         }
         auto conn = transport.connect({ep->host, ep->port});
         if (!conn) {
             mark_endpoint_bad(endpoint_id, domain::QualityReason::NoCommunication, now);
+            if (span) {
+                span->set_error(conn.error().message);
+            }
             return std::unexpected(conn.error());
         }
     }
 
     if (auto wr = flush_writes(endpoint_id); !wr) {
+        if (span) {
+            span->set_error(wr.error().message);
+        }
         return wr;
     }
 
@@ -249,6 +272,9 @@ domain::Result<void> Dispatcher::poll_due(std::string_view endpoint_id, domain::
                 first_error = std::unexpected(r.error());
             }
         }
+    }
+    if (span && !first_error) {
+        span->set_error(first_error.error().message);
     }
     return first_error;
 }
@@ -293,12 +319,20 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
         }
         batch.swap(q_it->second);
     }
+    auto span = start_span("modbus.write");
+    if (span) {
+        span->set_attribute("endpoint_id", endpoint_id);
+        span->set_attribute("write_count", static_cast<std::int64_t>(batch.size()));
+    }
     auto t_it = transports_.find(std::string(endpoint_id));
     if (t_it == transports_.end() || t_it->second == nullptr) {
         std::lock_guard lock(write_mutex_);
         auto& queue = write_queues_[std::string(endpoint_id)];
         queue.insert(queue.begin(), std::make_move_iterator(batch.begin()),
                      std::make_move_iterator(batch.end()));
+        if (span) {
+            span->set_error("transport not bound");
+        }
         return std::unexpected(domain::Error{
             domain::ErrorCode::NotFound, "transport not bound", "core.dispatcher", false});
     }
@@ -324,6 +358,9 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
             publish_quality(deps_.tag_store, batch[i].tag_id, domain::Quality::Bad,
                             domain::QualityReason::DecodingError, now);
             requeue_from(i + 1);
+            if (span) {
+                span->set_error(encoded.error().message);
+            }
             return std::unexpected(encoded.error());
         }
 
@@ -350,6 +387,9 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
                     publish_quality(deps_.tag_store, batch[j].tag_id, domain::Quality::Bad,
                                     domain::QualityReason::DecodingError, now);
                     requeue_from(j + 1);
+                    if (span) {
+                        span->set_error(next_encoded.error().message);
+                    }
                     return std::unexpected(next_encoded.error());
                 }
                 for (auto reg : *next_encoded) {
@@ -373,6 +413,9 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
             publish_quality(deps_.tag_store, batch[i].tag_id, domain::Quality::Bad,
                             domain::QualityReason::WriteRejected, now);
             requeue_from(i + 1);
+            if (span) {
+                span->set_error(wr.error().message);
+            }
             return std::unexpected(wr.error());
         }
         for (std::size_t k = 0; k < consumed; ++k) {

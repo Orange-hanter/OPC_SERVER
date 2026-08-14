@@ -64,7 +64,7 @@ clangd, clang-tidy и многие IDE.
 | `OPC_ENABLE_IPO` | `OFF` | IPO/LTO после `check_ipo_supported()` |
 | `OPC_ENABLE_UNITY_BUILD` | `OFF` | объединять `.cpp` своих целей |
 | `OPC_ENABLE_PCH` | `OFF` | использовать `target_precompile_headers()` |
-| `OPC_ENABLE_CLANG_TIDY` | `OFF` | запускать clang-tidy из compile pipeline |
+| `OPC_WITH_OTLP` | `OFF` (ON in preset `ci`) | OTLP/HTTP metrics+traces exporters (protobuf, libcurl) |
 | `OPC_DEPENDENCY_PROVIDER` | `AUTO` | `AUTO`, `CONAN` или `FETCHCONTENT` |
 
 Пример точечной настройки:

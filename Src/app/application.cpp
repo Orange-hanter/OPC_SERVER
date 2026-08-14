@@ -3,6 +3,7 @@
 #include "adapters/frame_log.hpp"
 #include "adapters/opc_ua_server.hpp"
 #include "adapters/otel_metrics.hpp"
+#include "adapters/otel_tracer.hpp"
 #include "adapters/ring_historian.hpp"
 #include "adapters/spdlog_log.hpp"
 #include "adapters/sqlite_historian.hpp"
@@ -46,11 +47,26 @@ adapters::MetricsExportMode to_metrics_mode(MetricsExportOption mode) {
     return adapters::MetricsExportMode::OStream;
 }
 
+adapters::TracesExportMode to_traces_mode(MetricsExportOption mode) {
+    switch (mode) {
+    case MetricsExportOption::None:
+        return adapters::TracesExportMode::None;
+    case MetricsExportOption::OStream:
+        return adapters::TracesExportMode::OStream;
+    case MetricsExportOption::OtlpHttp:
+        return adapters::TracesExportMode::OtlpHttp;
+    }
+    return adapters::TracesExportMode::None;
+}
+
 }  // namespace
 
 Application::Application() = default;
 
 Application::~Application() {
+    if (auto* traces = dynamic_cast<adapters::OtelTracer*>(tracer_.get())) {
+        traces->force_flush();
+    }
     if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
         otel->force_flush();
     }
@@ -82,8 +98,10 @@ bool Application::init(const CliOptions& options) {
         return false;
     }
 
-    if (options_.metrics_export == MetricsExportOption::OtlpHttp &&
-        !adapters::otlp_metrics_supported()) {
+    if ((options_.metrics_export == MetricsExportOption::OtlpHttp &&
+         !adapters::otlp_metrics_supported()) ||
+        (options_.traces_export == MetricsExportOption::OtlpHttp &&
+         !adapters::otlp_traces_supported())) {
         log_->error("app", "OTLP requested but build lacks OPC_WITH_OTLP");
         return false;
     }
@@ -98,6 +116,17 @@ bool Application::init(const CliOptions& options) {
         return false;
     }
     metrics_ = std::move(otel);
+
+    adapters::OtelTracerOptions traces_opts;
+    traces_opts.export_mode = to_traces_mode(options_.traces_export);
+    traces_opts.otlp_endpoint = options_.otlp_endpoint;
+    traces_opts.service_version = OPC_SERVER_VERSION_STRING;
+    auto tracer = std::make_unique<adapters::OtelTracer>(std::move(traces_opts));
+    if (!tracer->ok()) {
+        log_->error("app", "otel traces init failed: " + tracer->init_error());
+        return false;
+    }
+    tracer_ = std::move(tracer);
 
     const auto path = resolve_project_path(options_.project_path);
     if (!path) {
@@ -158,6 +187,7 @@ bool Application::init(const CliOptions& options) {
         .log = log_.get(),
         .historian = historian_.get(),
         .frame_log = frame_log_.get(),
+        .tracer = tracer_.get(),
         .transport_factory = default_transport_factory(frame_log_.get()),
         .opcua = std::move(opcua),
     });

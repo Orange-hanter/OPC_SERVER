@@ -31,7 +31,7 @@ TagStore/Translator/Dispatcher, sync Modbus TCP/UDP за Asio strand-per-endpoin
 `ServerRuntime`, **OPC UA Read/Write/Subscriptions** (DataSource; `None` или Sign/SignAndEncrypt),
 Diagnostics, historian/frame-log, spdlog/OTel metrics, **OPC Engineering Studio**.
 
-**Следующее:** OTLP default-on / traces poll-write (хвост этапа 5 в [roadmap](DOCs/07-roadmap.md)).
+**Следующее:** вне ядра — async Modbus TCP, промышленный PKI, живой OTLP-коллектор в CI (см. [roadmap](DOCs/07-roadmap.md)).
 
 OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
 

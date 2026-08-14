@@ -4,13 +4,13 @@
 
 Снимок: **2026-08-14**. Инкременты A (Asio), B (CI/schema/FC15), C (карты: CSV/nodeset/профили/runtime doctor) и D (SignAndEncrypt, UDP, load stand) закрыты в этой линии веток. Сводка задач и процент: [tasks.md](tasks.md).
 
-**Выполнение roadmap ядра (этапы 0–7, без Classic/DA):** ~98% пунктов чеклиста. Лабораторный MVP — 100%. Этап 7 / инкремент D — закрыт (с оговорками в tasks.md).
+**Выполнение roadmap ядра (этапы 0–7, без Classic/DA):** 100% пунктов чеклиста. Лабораторный MVP — 100%. Этап 7 / инкремент D и хвост этапа 5 (OTLP/traces) закрыты.
 
 ## Где мы сейчас
 
 Лабораторный контур **Modbus TCP → TagStore → OPC UA (Read/Write/Subscriptions)** работает end-to-end. Рядом: historian/frame-log, spdlog/OTel metrics, `opc-map` + doctor, Tauri Studio (read-only monitor). **Asio reactor** (strand-per-endpoint, `steady_timer`, reconnect backoff) закрывает anti-DoD `sleep` из [ADR-0002](adr/0002-concurrency-model.md).
 
-Это **ещё не** полный промышленный runtime: transport на strand остаётся блокирующим POSIX, demo-plant security — None (SignAndEncrypt доступен по проекту), OTLP/traces — opt-in/хвост этапа 5.
+Это **ещё не** полный промышленный runtime: transport на strand остаётся блокирующим POSIX, demo-plant security — None (SignAndEncrypt доступен по проекту).
 
 | Контур | Состояние |
 |--------|-----------|
@@ -22,7 +22,7 @@
 | OPC UA DataSource Read + Write + MonitoredItems | Есть |
 | Diagnostics `Objects/OPC_SERVER/Diagnostics` | Есть |
 | Historian hot ring + SQLite cold + frame log + replay | Есть |
-| spdlog + OTel metrics (`none`/`ostream`/`otlp`) | Есть (OTLP только `-DOPC_WITH_OTLP=ON`) |
+| spdlog + OTel metrics/traces (`none`/`ostream`/`otlp`) | Есть (OTLP в preset `ci` и `-DOPC_WITH_OTLP=ON`) |
 | Modular CMake presets + Conan 2 + CI artifacts | Есть |
 | Engineering Studio (Tauri 2) + `opc-monitor` | Есть |
 | JSON Schema **engine** (draft 2020-12) | Есть — инкремент B |
@@ -34,7 +34,7 @@
 | Modbus UDP | Есть (`endpoints[].transport = "udp"`) |
 | Load stand | Есть (Catch2: 2 endpoints × N tags + UA sub smoke) |
 
-Тесты: Catch2 (project, doctor, import-csv, gen-nodeset, runtime doctor, core, UA smoke/encryption, UDP, load stand, historian, frame replay, opc-monitor) + Studio Vitest. Presets `asan` / `tsan` гоняются в CI (инкремент B).
+Тесты: Catch2 (project, doctor, import-csv, gen-nodeset, runtime doctor, core, UA smoke/encryption, UDP, load stand, historian, traces, frame replay, opc-monitor) + Studio Vitest. Presets `asan` / `tsan` гоняются в CI (инкремент B). `ci` включает OTLP exporters.
 
 ## Этапы (факт)
 
@@ -109,7 +109,7 @@
 - [x] Frame log Modbus (`IFrameLog` / `FileFrameLog`)
 - [x] spdlog (`SpdlogLog`) + OpenTelemetry metrics (`OtelMetrics`, ADR-0015)
 - [x] Replay для отладки (`historian_replay.hpp`, `ReplayModbusTransport` / frame log)
-- [ ] OTLP default-on in CI / traces for poll-write
+- [x] OTLP default-on in CI / traces for poll-write
 - [x] Метрики `ua_sessions`, `tag_quality` из [ADR-0008](adr/0008-observability.md)
 
 ### Этап 6 — Удобство разметки карт
@@ -217,7 +217,7 @@ SignAndEncrypt (fail-closed), сертификатный профиль Studio/o
 | `reconnectDelayMs` backoff на strand | — |
 | `opc-map` validate (JSON Schema + semantic) / doctor / migrate / import-csv / gen-nodeset | — |
 | Studio + opc-monitor, cert profile Sign/SignAndEncrypt | username token / industrial CA |
-| OTel metrics including `ua_sessions` / `tag_quality`, OTLP opt-in | traces poll/write; OTLP в CI по флагу |
+| OTel metrics + poll/write traces; OTLP в CI preset | — |
 | GCC CI + Conan + Studio matrix + ASan/TSan | — |
 
 ## Вне roadmap ядра

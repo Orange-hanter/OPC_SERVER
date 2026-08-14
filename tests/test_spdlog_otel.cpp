@@ -1,9 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "adapters/otel_metrics.hpp"
+#include "adapters/otel_tracer.hpp"
 #include "adapters/spdlog_log.hpp"
 #include "app/cli_options.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -56,3 +58,43 @@ TEST_CASE("parse_cli log and metrics flags", "[app][cli]") {
     CHECK(opts.metrics_export == opc::app::MetricsExportOption::None);
     CHECK(opts.otlp_endpoint == "http://127.0.0.1:4318/v1/metrics");
 }
+
+TEST_CASE("OtelTracer records spans without export", "[adapters][otel][trace]") {
+    opc::adapters::OtelTracer tracer({
+        .export_mode = opc::adapters::TracesExportMode::None,
+        .service_name = "opc-test",
+    });
+    REQUIRE(tracer.ok());
+    {
+        auto span = tracer.start_span("modbus.poll");
+        span->set_attribute("endpoint_id", "ep1");
+        span->set_attribute("write_count", static_cast<std::int64_t>(0));
+    }
+    tracer.force_flush();
+}
+
+TEST_CASE("otlp_traces_url rewrites metrics path", "[adapters][otel][trace]") {
+    CHECK(opc::adapters::otlp_traces_url("http://127.0.0.1:4318/v1/metrics") ==
+          "http://127.0.0.1:4318/v1/traces");
+    CHECK(opc::adapters::otlp_traces_url("http://127.0.0.1:4318") ==
+          "http://127.0.0.1:4318/v1/traces");
+    CHECK(opc::adapters::otlp_traces_url("http://127.0.0.1:4318/v1/traces") ==
+          "http://127.0.0.1:4318/v1/traces");
+}
+
+TEST_CASE("parse_cli traces-export flag", "[app][cli]") {
+    const char* argv[] = {"OPC_SERVER", "--traces-export", "otlp", "--otlp-endpoint",
+                          "http://127.0.0.1:4318/v1/metrics"};
+    auto opts = opc::app::parse_cli(5, argv);
+    REQUIRE(opts.errors.empty());
+    CHECK(opts.traces_export == opc::app::MetricsExportOption::OtlpHttp);
+    CHECK(opts.otlp_endpoint == "http://127.0.0.1:4318/v1/metrics");
+}
+
+#ifdef OPC_WITH_OTLP
+TEST_CASE("OTLP exporters are compiled in", "[adapters][otel][otlp]") {
+    CHECK(opc::adapters::otlp_metrics_supported());
+    CHECK(opc::adapters::otlp_traces_supported());
+}
+#endif
+

@@ -55,7 +55,8 @@ void print_usage(std::ostream& out) {
         << "             [--no-opcua] [--no-historian] [--historian-capacity N]\n"
         << "             [--historian-db <path.sqlite>] [--frame-log <path>]\n"
         << "             [--log-level LEVEL] [--log-file <path>]\n"
-        << "             [--metrics-export none|ostream|otlp] [--otlp-endpoint URL]\n"
+        << "             [--metrics-export none|ostream|otlp] [--traces-export none|ostream|otlp]\n"
+        << "             [--otlp-endpoint URL]\n"
         << "             [--runtime-doctor] [--ua-cert PATH] [--ua-key PATH] [--ua-trust PATH]\n"
         << "             [--ua-strict-certs]\n"
         << "  OPC_SERVER --version\n"
@@ -74,7 +75,9 @@ void print_usage(std::ostream& out) {
         << "  --log-level <level>         trace|debug|info|warn|error (default info)\n"
         << "  --log-file <path>           Also write rotating spdlog file sink\n"
         << "  --metrics-export <mode>     none|ostream|otlp (default none)\n"
-        << "  --otlp-endpoint <url>       OTLP/HTTP metrics URL (requires -DOPC_WITH_OTLP=ON)\n"
+        << "  --traces-export <mode>      none|ostream|otlp poll/write spans (default none)\n"
+        << "  --otlp-endpoint <url>       OTLP/HTTP collector (metrics and/or traces; "
+           "requires -DOPC_WITH_OTLP=ON)\n"
         << "  --runtime-doctor            After start+poll, print TagStore quality findings to stderr;\n"
         << "                              with --once, exit 1 if any tag is missing or not Good\n"
         << "  --ua-cert <path>            Server application certificate (DER/PEM) for Sign/Encrypt\n"
@@ -222,6 +225,16 @@ CliOptions parse_cli(int argc, char const* argv[]) {
             }
             if (!parse_metrics_export(argv[++i], opts.metrics_export)) {
                 opts.errors.emplace_back("invalid --metrics-export (use none|ostream|otlp)");
+            }
+            continue;
+        }
+        if (arg == "--traces-export") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--traces-export requires a value");
+                break;
+            }
+            if (!parse_metrics_export(argv[++i], opts.traces_export)) {
+                opts.errors.emplace_back("invalid --traces-export (use none|ostream|otlp)");
             }
             continue;
         }

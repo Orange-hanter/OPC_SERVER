@@ -66,7 +66,7 @@ UDP — `ModbusUdpTransport`: тот же MBAP ADU, один запрос/отв
 | Компонент | Выбор |
 |-----------|--------|
 | Логи | **spdlog** (async logger, уровни, sink в файл/stdout) |
-| Метрики/трассы | **OpenTelemetry** C++ SDK: metrics including `ua_sessions` / `tag_quality`; traces poll/write — хвост этапа 5 |
+| Метрики/трассы | **OpenTelemetry** C++ SDK: metrics (`ua_sessions` / `tag_quality`) и traces `modbus.poll` / `modbus.write`; OTLP/HTTP в CI (`OPC_WITH_OTLP`) |
 
 ## Тестирование
 

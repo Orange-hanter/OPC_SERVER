@@ -6,6 +6,7 @@
 #include "ports/i_metrics.hpp"
 #include "ports/i_modbus_transport.hpp"
 #include "ports/i_tag_store.hpp"
+#include "ports/i_tracer.hpp"
 #include "project/types.hpp"
 
 #include <memory>
@@ -26,6 +27,7 @@ public:
         ports::ITagStore* tag_store{nullptr};
         ports::IClock* clock{nullptr};
         ports::IMetrics* metrics{nullptr};
+        ports::ITracer* tracer{nullptr};
     };
 
     explicit Dispatcher(Dependencies deps);
@@ -56,6 +58,7 @@ private:
     domain::Result<void> poll_tag(const TagBinding& binding,
                                   ports::IModbusTransport& transport,
                                   domain::TimestampMs now);
+    [[nodiscard]] std::unique_ptr<ports::ISpan> start_span(std::string_view name) const;
 
     Dependencies deps_;
     std::unordered_map<std::string, ports::IModbusTransport*> transports_;

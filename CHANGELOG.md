@@ -29,7 +29,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Asio increment A (standalone Asio 1.32, strand-per-endpoint, reconnect backoff)
 - Increment D: open62541 OpenSSL encryption (`Sign`/`SignAndEncrypt` fail-closed),
   Studio/`opc-monitor` certificate profile, Modbus UDP adapter, Catch2 load stand
-  (2 endpoints × N tags + UA subscription smoke)
+- Poll/write OpenTelemetry traces (`ITracer`, `modbus.poll` / `modbus.write`) and
+  OTLP/HTTP exporters in the `ci` CMake preset (`-DOPC_WITH_OTLP=ON`)
 - Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
 - Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - `opc-map doctor`: register overlaps, unpolled tags, sparse/gappy poll blocks
@@ -49,10 +50,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Roadmap snapshot (2026-08-14): инкременты A–D закрыты (~98% чеклиста этапов 0–7);
-  живой backlog и процент — `DOCs/tasks.md`; открыт хвост этапа 5 (OTLP/traces)
+- Roadmap snapshot (2026-08-14): этапы 0–7 чеклиста ядра закрыты (100%);
+  живой backlog — `DOCs/tasks.md` (вне ядра: async TCP, industrial PKI)
 - FetchContent/CI: `libssl-dev`, `UA_ENABLE_ENCRYPTION=OPENSSL`; Conan `open62541:encryption=openssl`
-- CLI `--ua-cert` / `--ua-key` / `--ua-trust` / `--ua-strict-certs`
+- CLI `--ua-cert` / `--ua-key` / `--ua-trust` / `--ua-strict-certs`; `--traces-export`
 
 ### Fixed
 
