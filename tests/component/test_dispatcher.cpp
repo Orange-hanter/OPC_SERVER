@@ -33,7 +33,7 @@ std::shared_ptr<const opc::project::Project> tiny_project() {
       "devices": [
         {"id": "d1", "endpointId": "ep1", "unitId": 1, "tags": [
           {"name": "Level", "nodePath": "Plant/Level", "area": "holding", "address": 0,
-           "type": "float32", "byteOrder": "ABCD", "group": "g1"},
+           "type": "float32", "byteOrder": "ABCD", "writable": true, "group": "g1"},
           {"name": "Setpoint", "nodePath": "Plant/Setpoint", "area": "holding", "address": 2,
            "type": "uint16", "byteOrder": "AB", "writable": true, "group": "g1"}
         ]}
@@ -193,4 +193,74 @@ TEST_CASE("Dispatcher write queue is bounded under concurrent producers and repo
     auto stored = store.get(sp->id);
     REQUIRE(stored);
     CHECK(stored->quality == opc::domain::Quality::Good);
+}
+
+TEST_CASE("Dispatcher writes multi-register values and publishes the engineering value",
+          "[component][core][dispatcher][write]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}));
+
+    const auto level = index.find_by_name("Level");
+    REQUIRE(level);
+    const auto expected = Translator::encode(level->tag, 33.25F);
+    REQUIRE(expected);
+    REQUIRE(expected->size() == 2);
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index, .tag_store = &store, .clock = &clock, .metrics = &metrics});
+    dispatcher.bind_transport("ep1", &transport);
+    REQUIRE(dispatcher.enqueue_write(level->id, 33.25F));
+    REQUIRE(dispatcher.flush_writes("ep1"));
+
+    CHECK(transport.holding_at(1, 0) == (*expected)[0]);
+    CHECK(transport.holding_at(1, 1) == (*expected)[1]);
+    const auto stored = store.get(level->id);
+    REQUIRE(stored);
+    CHECK(stored->quality == opc::domain::Quality::Good);
+    CHECK(stored->reason == opc::domain::QualityReason::None);
+    CHECK(std::get<float>(stored->value) == Catch::Approx(33.25F));
+}
+
+TEST_CASE("Dispatcher preserves unprocessed queue tail after a mid-batch encoding failure",
+          "[component][core][dispatcher][write][fault]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    opc::adapters::MemoryMetrics metrics;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}));
+    const auto setpoint = index.find_by_name("Setpoint");
+    REQUIRE(setpoint);
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index, .tag_store = &store, .clock = &clock, .metrics = &metrics});
+    dispatcher.bind_transport("ep1", &transport);
+    REQUIRE(dispatcher.enqueue_write(setpoint->id, std::uint16_t{10}));
+    REQUIRE(dispatcher.enqueue_write(setpoint->id, std::monostate{}));
+    REQUIRE(dispatcher.enqueue_write(setpoint->id, std::uint16_t{30}));
+
+    auto first_flush = dispatcher.flush_writes("ep1");
+    REQUIRE_FALSE(first_flush);
+    CHECK(first_flush.error().code == opc::domain::ErrorCode::InvalidArgument);
+    CHECK(transport.holding_at(1, 2) == 10);
+    CHECK(metrics.gauge("modbus_write_queue_depth") == 1.0);
+    const auto rejected = store.get(setpoint->id);
+    REQUIRE(rejected);
+    CHECK(std::get<std::uint16_t>(rejected->value) == 10);
+    CHECK(rejected->quality == opc::domain::Quality::Bad);
+    CHECK(rejected->reason == opc::domain::QualityReason::DecodingError);
+
+    REQUIRE(dispatcher.flush_writes("ep1"));
+    CHECK(transport.holding_at(1, 2) == 30);
+    CHECK(metrics.gauge("modbus_write_queue_depth") == 0.0);
+    const auto recovered = store.get(setpoint->id);
+    REQUIRE(recovered);
+    CHECK(std::get<std::uint16_t>(recovered->value) == 30);
+    CHECK(recovered->quality == opc::domain::Quality::Good);
 }

@@ -267,3 +267,32 @@ TEST_CASE("project loader accepts Modbus boundary values", "[contract][project][
     CHECK(result.project.devices.front().unit_id == 0);
     CHECK(result.project.devices.back().unit_id == 255);
 }
+
+TEST_CASE("unknown tag group is warning-only and preserves a loadable project",
+          "[contract][project][validation]") {
+    constexpr std::string_view kJson = R"({
+      "schemaVersion": 1,
+      "name": "warning-only",
+      "endpoints": [
+        {"id": "ep", "host": "127.0.0.1", "port": 502, "transport": "tcp"}
+      ],
+      "devices": [
+        {"id": "d", "endpointId": "ep", "unitId": 1, "tags": [
+          {"name": "A", "area": "holding", "address": 0, "type": "uint16",
+           "byteOrder": "AB", "group": "orphan"}
+        ]}
+      ],
+      "pollGroups": [
+        {"id": "g", "periodMs": 100, "priority": "normal", "deviceId": "d",
+         "tagNames": ["A"]}
+      ]
+    })";
+
+    const auto result = opc::project::load_json_text(kJson, "warning.json");
+    REQUIRE(result.ok);
+    REQUIRE(result.diagnostics.size() == 1);
+    CHECK(result.diagnostics.front().severity == opc::project::Diagnostic::Severity::Warning);
+    CHECK(result.diagnostics.front().path == "devices[0].tags[0].group");
+    CHECK(result.diagnostics.front().message.find("has no matching pollGroups.id") !=
+          std::string::npos);
+}

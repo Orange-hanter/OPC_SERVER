@@ -186,6 +186,33 @@ TEST_CASE("Translator 32-bit byte orders match exact Modbus wire registers",
     }
 }
 
+TEST_CASE("Translator float32 byte orders match IEEE-754 Modbus words",
+          "[unit][core][translator][contract]") {
+    struct Case {
+        const char* order;
+        std::array<std::uint16_t, 2> registers;
+    };
+    constexpr std::array cases = {
+        Case{"ABCD", {0x3F80, 0x0000}},
+        Case{"CDAB", {0x0000, 0x3F80}},
+        Case{"BADC", {0x803F, 0x0000}},
+        Case{"DCBA", {0x0000, 0x803F}},
+    };
+
+    for (const auto& test : cases) {
+        CAPTURE(test.order);
+        Tag tag = make_tag(TagType::Float32, test.order);
+        auto encoded = Translator::encode(tag, 1.0F);
+        REQUIRE(encoded);
+        CHECK(*encoded ==
+              std::vector<std::uint16_t>(test.registers.begin(), test.registers.end()));
+
+        auto decoded = Translator::decode(tag, test.registers);
+        REQUIRE(decoded);
+        CHECK(std::get<float>(*decoded) == Catch::Approx(1.0F));
+    }
+}
+
 TEST_CASE("Translator default byte orders match the project format contract",
           "[unit][core][translator][contract]") {
     Tag u16 = make_tag(TagType::UInt16, {});
@@ -215,4 +242,29 @@ TEST_CASE("Translator integer scaling rounds to the nearest raw register",
     auto negative = Translator::encode(tag, std::int16_t{-4});
     REQUIRE(negative);
     CHECK(*negative == std::vector<std::uint16_t>{0xFFFD});
+}
+
+TEST_CASE("Translator bool maps nonzero registers to true and emits zero or one",
+          "[unit][core][translator][contract]") {
+    Tag tag = make_tag(TagType::Bool, {});
+
+    for (const std::uint16_t raw : {std::uint16_t{1}, std::uint16_t{42}, std::uint16_t{0xFFFF}}) {
+        CAPTURE(raw);
+        const std::array registers{raw};
+        auto decoded = Translator::decode(tag, registers);
+        REQUIRE(decoded);
+        CHECK(std::get<bool>(*decoded));
+    }
+
+    const std::array<std::uint16_t, 1> zero{0};
+    auto decoded_zero = Translator::decode(tag, zero);
+    REQUIRE(decoded_zero);
+    CHECK_FALSE(std::get<bool>(*decoded_zero));
+
+    auto encoded_false = Translator::encode(tag, false);
+    auto encoded_true = Translator::encode(tag, true);
+    REQUIRE(encoded_false);
+    REQUIRE(encoded_true);
+    CHECK(*encoded_false == std::vector<std::uint16_t>{0});
+    CHECK(*encoded_true == std::vector<std::uint16_t>{1});
 }

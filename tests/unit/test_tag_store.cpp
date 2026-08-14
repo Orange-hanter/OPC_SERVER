@@ -54,6 +54,45 @@ TEST_CASE("TagStore mark_stale_before", "[unit][core][tagstore]") {
     REQUIRE(stale.reason == QualityReason::Stale);
 }
 
+TEST_CASE("TagStore stale cutoff is strict and notifies only on transition",
+          "[unit][core][tagstore][contract]") {
+    opc::core::TagStore store;
+    int notifications = 0;
+    TagValue notified;
+    store.subscribe([&](TagId id, const TagValue& value) {
+        if (id == 1) {
+            ++notifications;
+            notified = value;
+        }
+    });
+
+    TagValue value;
+    value.value = std::uint16_t{17};
+    value.quality = Quality::Good;
+    value.reason = QualityReason::None;
+    value.server_ts = 100;
+    store.publish(1, value);
+    notifications = 0;
+
+    store.mark_stale_before(100, QualityReason::Stale);
+    REQUIRE(store.get(1));
+    CHECK(store.get(1)->quality == Quality::Good);
+    CHECK(notifications == 0);
+
+    store.mark_stale_before(101, QualityReason::Stale);
+    const auto stale = store.get(1);
+    REQUIRE(stale);
+    CHECK(stale->quality == Quality::Uncertain);
+    CHECK(stale->reason == QualityReason::Stale);
+    CHECK(std::get<std::uint16_t>(stale->value) == 17);
+    CHECK(notifications == 1);
+    CHECK(notified.quality == Quality::Uncertain);
+
+    store.mark_stale_before(102, QualityReason::Timeout);
+    CHECK(notifications == 1);
+    CHECK(store.get(1)->reason == QualityReason::Stale);
+}
+
 TEST_CASE("TagStore callbacks may unsubscribe and publish reentrantly",
           "[unit][core][tagstore][hardening]") {
     opc::core::TagStore store;
