@@ -18,6 +18,7 @@ add_executable(opc_tests
     test_frame_replay.cpp
     test_modbus_udp.cpp
     test_modbus_tcp.cpp
+    test_modbus_async.cpp
     test_ua_encryption.cpp
     test_ua_username.cpp
     test_otlp_live.cpp

@@ -41,6 +41,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Live OTLP collector smoke in CI (`scripts/ci/otlp_smoke.sh`): Docker
   `opentelemetry-collector-contrib` (file exporters) with Python OTLP/HTTP fallback;
   Catch2 `[otlp][live]` gated by `OPC_OTLP_SMOKE=1`
+- Async `IModbusTransport` completion tokens (`async_*` + `IExecutor`); TCP worker-thread
+  I/O; `Dispatcher::poll_due_async` keeps the reactor strand free during Modbus RTT
 - Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
 - Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - `opc-map doctor`: register overlaps, unpolled tags, sparse/gappy poll blocks

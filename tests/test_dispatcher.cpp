@@ -11,6 +11,8 @@
 #include "ports/i_metrics.hpp"
 #include "project/load.hpp"
 
+#include <chrono>
+#include <future>
 #include <memory>
 
 using opc::adapters::testsupport::FakeModbusTransport;
@@ -95,6 +97,46 @@ TEST_CASE("Dispatcher poll and write via fake transport", "[core][dispatcher]") 
     auto regs = transport.read_holding_registers(1, 2, 1);
     REQUIRE(regs);
     REQUIRE((*regs)[0] == 99);
+}
+
+TEST_CASE("Dispatcher poll_due_async via fake transport", "[core][dispatcher][async]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}).has_value());
+
+    auto level = index.find_by_name("Level");
+    REQUIRE(level);
+
+    auto encoded = Translator::encode(level->tag, 3.5f);
+    REQUIRE(encoded);
+    transport.set_holding(0, (*encoded)[0]);
+    transport.set_holding(1, (*encoded)[1]);
+    transport.set_holding(2, 1);
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+    });
+    dispatcher.bind_transport("ep1", &transport);
+
+    std::promise<opc::domain::Result<void>> promise;
+    auto future = promise.get_future();
+    dispatcher.poll_due_async("ep1", 2'000,
+                              [&](opc::domain::Result<void> r) { promise.set_value(std::move(r)); });
+    REQUIRE(future.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+    REQUIRE(future.get().has_value());
+
+    auto level_v = store.get(level->id);
+    REQUIRE(level_v);
+    REQUIRE(level_v->quality == opc::domain::Quality::Good);
+    REQUIRE(std::get<float>(level_v->value) == Catch::Approx(3.5f));
 }
 
 TEST_CASE("Dispatcher Bad write keeps prior value; QueueFull is returned", "[core][dispatcher][hardening]") {
