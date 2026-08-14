@@ -47,7 +47,7 @@
 
 | Компонент | Выбор |
 |-----------|--------|
-| Клиент | Sync POSIX **Modbus TCP** и **Modbus UDP** за `IModbusTransport`, вызов **только** со strand endpoint. Asio-native async TCP — вне ядра |
+| Клиент | **Asio-native Modbus TCP** (`async_connect`/`async_read`/`async_write` на private `io_context`) и **Modbus UDP** за `IModbusTransport`; sync API вызывается только со strand endpoint |
 | Legacy | submodule `Lib/modbuspp` — **не ядро**; кандидат на удаление/замену |
 
 UDP — `ModbusUdpTransport`: тот же MBAP ADU, один запрос/ответ на датаграмму (`endpoints[].transport = "udp"`).

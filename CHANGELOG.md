@@ -33,6 +33,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   OTLP/HTTP exporters in the `ci` CMake preset (`-DOPC_WITH_OTLP=ON`)
 - Industrial PKI defaults: Sign/Encrypt without AcceptAll unless `--ua-accept-untrusted`;
   `--ua-crl` revocation list; `--ua-strict-certs` still forces reject
+- Asio-native Modbus TCP (`AsioModbusTcpTransport`): private `io_context`, async
+  connect/read/write with deadline; sync `IModbusTransport` facade for Dispatcher
 - Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
 - Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - `opc-map doctor`: register overlaps, unpolled tags, sparse/gappy poll blocks

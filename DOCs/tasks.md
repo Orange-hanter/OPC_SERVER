@@ -3,7 +3,7 @@
 Актуальный backlog ядра. Порядок работ и критерии готовности: [07-roadmap.md](07-roadmap.md).  
 Исторический набросок 2019 (опрос IoT/Modbus) закрыт этапами 1–2; текст сохранён в конце файла.
 
-**Снимок:** 2026-08-14, линия `cursor/ci-hardening-860d` поверх OTLP traces / A→D. В `master` пока Studio (PR #8).
+**Снимок:** 2026-08-14, линия `cursor/async-modbus-tcp-860d` поверх industrial-pki / CI / traces / A→D. В `master` пока Studio (PR #8).
 
 ## Процент выполнения
 
@@ -40,20 +40,21 @@
 ### Приоритет (после ядра)
 
 1. ~~CI hardening: TSan races, Conan open62541 plugins, Studio Win/macOS OpenSSL/C++23~~ — `cursor/ci-hardening-860d`
-2. Промышленный PKI (fail-closed Sign/Encrypt, `--ua-crl`, `--ua-accept-untrusted`) — `cursor/industrial-pki-860d`
-3. Asio-native async Modbus TCP (ADR-0007; sync POSIX на strand остаётся рабочим)
+2. ~~Промышленный PKI (fail-closed Sign/Encrypt, `--ua-crl`, `--ua-accept-untrusted`)~~ — `cursor/industrial-pki-860d`
+3. ~~Asio-native async Modbus TCP (ADR-0007)~~ — `cursor/async-modbus-tcp-860d`
 4. Username token / industrial CA identity (следующий шаг PKI)
 5. Живой OTLP-коллектор в CI (сейчас только compile-in exporters)
+6. Полный async `IModbusTransport` API (completion tokens) — опционально; сейчас sync facade поверх Asio async I/O
 
 ### Не в ядре (не входят в процент)
 
-- Asio-native async Modbus TCP (транспорт на strand остаётся sync POSIX)
+- Полный async port API (completion tokens) для Dispatcher без блокировки strand на I/O
 - Встроенный OPC DA/Classic
 - Полноценная SCADA
 - Другие полевые протоколы без отдельного эпика Translator
 - HTTP/WebSocket API в `OPC_SERVER` (отклонён ADR-0016)
 - Каталог вендорских device profiles сверх demo `generic-tank-sensor`
-- Промышленный PKI (CA, reject list, username token) сверх lab self-signed / AcceptAll
+- Username token / industrial CA сверх fail-closed channel PKI
 - Живой OTLP-коллектор в CI (сейчас только compile-in exporters)
 
 ## Исторический backlog (2019, закрыт)

@@ -4,7 +4,7 @@
 #include "ports/i_modbus_transport.hpp"
 
 #include <cstdint>
-#include <mutex>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -16,11 +16,18 @@ struct ModbusTcpTransportOptions {
     std::string endpoint_id;
 };
 
-/// Synchronous Modbus TCP client (call only from one endpoint strand — ADR-0002/0007).
+/// Asio-native Modbus TCP client (ADR-0007). Public API stays synchronous so
+/// Dispatcher can call it from an endpoint strand; I/O uses a private
+/// `io_context` + async connect/read/write (does not nest on the reactor).
+/// Call only from one endpoint strand (ADR-0002).
 class ModbusTcpTransport final : public ports::IModbusTransport {
 public:
     explicit ModbusTcpTransport(int response_timeout_ms = 1000);
     explicit ModbusTcpTransport(ModbusTcpTransportOptions options);
+    ~ModbusTcpTransport() override;
+
+    ModbusTcpTransport(const ModbusTcpTransport&) = delete;
+    ModbusTcpTransport& operator=(const ModbusTcpTransport&) = delete;
 
     domain::Result<void> connect(const ports::EndpointAddress& endpoint) override;
     void close() override;
@@ -54,21 +61,18 @@ public:
                          std::uint16_t address,
                          std::span<const std::uint8_t> values) override;
 
-    void set_frame_log(ports::IFrameLog* log) { frame_log_ = log; }
-    void set_endpoint_id(std::string id) { endpoint_id_ = std::move(id); }
+    void set_frame_log(ports::IFrameLog* log);
+    void set_endpoint_id(std::string id);
 
 private:
     domain::Result<std::vector<std::uint8_t>>
     transact(std::uint8_t unit, std::span<const std::uint8_t> pdu);
 
-    void emit_frame(ports::FrameRecord frame);
-
-    int fd_{-1};
-    int response_timeout_ms_{1000};
-    std::uint16_t transaction_id_{1};
-    mutable std::mutex mutex_;
-    ports::IFrameLog* frame_log_{nullptr};
-    std::string endpoint_id_;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
+
+/// ADR-0007 name for the default TCP adapter.
+using AsioModbusTcpTransport = ModbusTcpTransport;
 
 }  // namespace opc::adapters
