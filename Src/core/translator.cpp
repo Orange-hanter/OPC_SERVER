@@ -98,34 +98,24 @@ Result<std::array<std::uint8_t, 4>> regs_to_be_bytes(std::span<const std::uint16
 
 Result<std::array<std::uint16_t, 2>> be_bytes_to_regs(std::array<std::uint8_t, 4> be,
                                                      const std::string& order) {
-    std::uint8_t a = be[0], b = be[1], c = be[2], d = be[3];
-    std::uint8_t p = a, q = b, r = c, s = d;
+    const auto [a, b, c, d] = be;
+    std::array<std::uint8_t, 4> wire{};
     if (order == "ABCD") {
-        p = a;
-        q = b;
-        r = c;
-        s = d;
+        wire = {a, b, c, d};
     } else if (order == "CDAB") {
-        p = c;
-        q = d;
-        r = a;
-        s = b;
+        wire = {c, d, a, b};
     } else if (order == "BADC") {
-        p = b;
-        q = a;
-        r = d;
-        s = c;
+        wire = {b, a, d, c};
     } else if (order == "DCBA") {
-        p = d;
-        q = c;
-        r = b;
-        s = a;
+        wire = {d, c, b, a};
     } else {
         return std::unexpected(
             Error{ErrorCode::Decoding, "unsupported byteOrder for 32-bit", "core.translator", false});
     }
-    const std::uint16_t r0 = static_cast<std::uint16_t>((p << 8) | q);
-    const std::uint16_t r1 = static_cast<std::uint16_t>((r << 8) | s);
+    const std::uint16_t r0 =
+        static_cast<std::uint16_t>((wire[0] << 8) | wire[1]);
+    const std::uint16_t r1 =
+        static_cast<std::uint16_t>((wire[2] << 8) | wire[3]);
     return std::array<std::uint16_t, 2>{r0, r1};
 }
 

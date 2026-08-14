@@ -94,14 +94,15 @@ TEST_CASE("ModbusTcpTransport rejects mismatched MBAP and PDU identity",
     LoopbackModbusSlave slave;
     slave.set_holding(1, 0, 42);
     ModbusTcpTransport transport(500);
-    REQUIRE(transport.connect({.host = "127.0.0.1", .port = slave.port()}));
 
     const auto require_decoding_error = [&](auto inject) {
+        REQUIRE(transport.connect({.host = "127.0.0.1", .port = slave.port()}));
         inject();
         auto result = transport.read_holding_registers(1, 0, 1);
         REQUIRE_FALSE(result);
         CHECK(result.error().code == opc::domain::ErrorCode::Decoding);
         CHECK_FALSE(result.error().retryable);
+        CHECK_FALSE(transport.is_connected());
     };
 
     require_decoding_error([&] { slave.corrupt_transaction_once(); });
@@ -110,7 +111,10 @@ TEST_CASE("ModbusTcpTransport rejects mismatched MBAP and PDU identity",
     require_decoding_error([&] { slave.corrupt_function_once(); });
     require_decoding_error([&] { slave.corrupt_byte_count_once(); });
 
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = slave.port()}));
     auto valid = transport.read_holding_registers(1, 0, 1);
+    const std::string valid_error = valid ? std::string{} : valid.error().message;
+    INFO(valid_error);
     REQUIRE(valid);
     CHECK((*valid)[0] == 42);
 }
@@ -126,12 +130,14 @@ TEST_CASE("ModbusTcpTransport validates write response echoes",
     REQUIRE_FALSE(single);
     CHECK(single.error().code == opc::domain::ErrorCode::Decoding);
 
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = slave.port()}));
     slave.corrupt_write_echo_once();
     const std::array<std::uint16_t, 2> pair{1, 2};
     auto multiple = transport.write_multiple_registers(1, 20, pair);
     REQUIRE_FALSE(multiple);
     CHECK(multiple.error().code == opc::domain::ErrorCode::Decoding);
 
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = slave.port()}));
     slave.corrupt_write_echo_once();
     auto coil = transport.write_single_coil(1, 5, true);
     REQUIRE_FALSE(coil);

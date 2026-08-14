@@ -126,8 +126,9 @@ bool Application::init(const CliOptions& options) {
         if (!options_.historian_db.empty()) {
             auto sqlite = std::make_unique<adapters::SqliteHistorian>(
                 options_.historian_db, options_.historian_capacity, metrics_.get());
-            if (sqlite->open_error()) {
-                log_->error("app", "historian db: " + sqlite->open_error()->message);
+            const auto& open_error = sqlite->open_error();
+            if (open_error) {
+                log_->error("app", "historian db: " + open_error->message);
                 return false;
             }
             historian_ = std::move(sqlite);

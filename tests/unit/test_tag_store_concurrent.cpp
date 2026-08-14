@@ -40,7 +40,7 @@ TEST_CASE("TagStore concurrent publish and get stay consistent", "[unit][core][t
     for (int w = 0; w < kWriters; ++w) {
         auto got = store.get(static_cast<opc::domain::TagId>(w + 1));
         REQUIRE(got);
-        REQUIRE(got->quality == Quality::Good);
+        REQUIRE(got.value_or(TagValue{}).quality == Quality::Good);
     }
 }
 
@@ -76,7 +76,8 @@ TEST_CASE("TagStore mark_stale_before does not overwrite Bad", "[unit][core][tag
     store.mark_stale_before(50, QualityReason::Stale);
     const auto got = store.get(1);
     REQUIRE(got);
-    REQUIRE(got->quality == Quality::Bad);
-    REQUIRE(got->reason == QualityReason::Timeout);
-    REQUIRE(std::get<std::uint16_t>(got->value) == 9);
+    const auto stored = got.value_or(TagValue{});
+    REQUIRE(stored.quality == Quality::Bad);
+    REQUIRE(stored.reason == QualityReason::Timeout);
+    REQUIRE(std::get<std::uint16_t>(stored.value) == 9);
 }

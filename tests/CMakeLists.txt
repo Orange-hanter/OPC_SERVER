@@ -60,6 +60,16 @@ if(TARGET OPC_SERVER)
   )
 endif()
 opc_apply_project_options(opc_tests)
+# Static analyzers target production code. Catch2 assertion macros intentionally
+# model control flow that clang-tidy cannot infer, producing optional-access and
+# enum-cast false positives in test translation units. Compiler -Werror still
+# applies to all tests.
+if(OPC_ENABLE_CLANG_TIDY)
+  set_property(TARGET opc_tests PROPERTY CXX_CLANG_TIDY "")
+endif()
+if(OPC_ENABLE_CPPCHECK)
+  set_property(TARGET opc_tests PROPERTY CXX_CPPCHECK "")
+endif()
 
 if(OPC_CATCH_DISCOVERY_MODULE)
   include("${OPC_CATCH_DISCOVERY_MODULE}")
@@ -79,6 +89,12 @@ add_executable(opc_bench lab/bench_translator.cpp)
 target_link_libraries(opc_bench PRIVATE opc::core Catch2::Catch2WithMain)
 target_compile_definitions(opc_bench PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
 opc_apply_project_options(opc_bench)
+if(OPC_ENABLE_CLANG_TIDY)
+  set_property(TARGET opc_bench PROPERTY CXX_CLANG_TIDY "")
+endif()
+if(OPC_ENABLE_CPPCHECK)
+  set_property(TARGET opc_bench PROPERTY CXX_CPPCHECK "")
+endif()
 
 if(OPC_ENABLE_FUZZERS)
   if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")

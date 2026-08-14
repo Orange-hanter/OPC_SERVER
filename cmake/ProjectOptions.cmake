@@ -9,7 +9,7 @@ function(opc_configure_project_options)
   if(OPC_ENABLE_WARNINGS)
     target_compile_options(opc_project_options INTERFACE
       "$<$<CXX_COMPILER_ID:MSVC>:/W4;/permissive->"
-      "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion>"
+      "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wno-missing-field-initializers>"
     )
   endif()
 

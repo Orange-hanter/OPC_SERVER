@@ -36,7 +36,7 @@ const char* value_type_name(const domain::ScalarValue& v) {
             } else if constexpr (std::is_same_v<T, double>) {
                 return "f64";
             } else {
-                return "null";
+                return "unknown";
             }
         },
         v);
@@ -120,8 +120,13 @@ SqliteHistorian::SqliteHistorian(std::string db_path,
 
 SqliteHistorian::~SqliteHistorian() {
     if (db_ != nullptr) {
-        (void)flush();
-        sqlite3_close(db_);
+        try {
+            [[maybe_unused]] const auto flush_result = flush();
+        } catch (...) {
+            // Destructors must not throw; pending samples remain unflushed.
+            pending_.clear();
+        }
+        [[maybe_unused]] const int close_result = sqlite3_close(db_);
         db_ = nullptr;
     }
 }

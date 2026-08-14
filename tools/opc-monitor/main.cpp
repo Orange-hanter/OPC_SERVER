@@ -13,7 +13,7 @@
 
 namespace {
 
-constexpr std::size_t kMaxLineBytes = 1024 * 1024;
+constexpr std::size_t kMaxLineBytes = std::size_t{1024} * 1024;
 std::mutex output_mutex;
 
 void write_event(nlohmann::json event) {

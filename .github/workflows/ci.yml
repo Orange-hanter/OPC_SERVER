@@ -103,7 +103,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            ninja-build cmake clang clang-tidy cppcheck libsqlite3-dev
+            ninja-build cmake g++-14 clang-19 clang-tidy-19 lld-19 \
+            cppcheck libsqlite3-dev
 
       - name: Analyze and build
         run: ./scripts/run-static-analysis.sh

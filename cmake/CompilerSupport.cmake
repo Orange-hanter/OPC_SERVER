@@ -35,7 +35,7 @@ function(opc_detect_cxx_standard output_variable)
   endif()
 
   _opc_check_expected_with_standard(26 OPC_HAS_STD_EXPECTED_CXX26)
-  if(OPC_HAS_STD_EXPECTED_CXX26)
+  if(OPC_HAS_STD_EXPECTED_CXX26 AND "cxx_std_26" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
     set("${output_variable}" 26 PARENT_SCOPE)
     return()
   endif()

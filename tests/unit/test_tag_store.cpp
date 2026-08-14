@@ -30,7 +30,8 @@ TEST_CASE("TagStore publish/get/subscribe", "[unit][core][tagstore]") {
 
     const auto got = store.get(7);
     REQUIRE(got.has_value());
-    REQUIRE(got->quality == Quality::Good);
+    const auto stored = got.value_or(TagValue{});
+    REQUIRE(stored.quality == Quality::Good);
 
     store.unsubscribe(sub);
     store.publish(7, v);
@@ -48,8 +49,9 @@ TEST_CASE("TagStore mark_stale_before", "[unit][core][tagstore]") {
     store.mark_stale_before(50, QualityReason::Stale);
     const auto got = store.get(1);
     REQUIRE(got.has_value());
-    REQUIRE(got->quality == Quality::Uncertain);
-    REQUIRE(got->reason == QualityReason::Stale);
+    const auto stale = got.value_or(TagValue{});
+    REQUIRE(stale.quality == Quality::Uncertain);
+    REQUIRE(stale.reason == QualityReason::Stale);
 }
 
 TEST_CASE("TagStore callbacks may unsubscribe and publish reentrantly",

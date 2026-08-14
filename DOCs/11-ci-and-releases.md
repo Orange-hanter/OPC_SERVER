@@ -18,8 +18,9 @@
 
 - **Ubuntu 24.04 + g++** (primary): CMake preset `ci`, `scripts/layer-lint.py`, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
 - **ASan/UBSan**: preset `asan` + `ctest --preset asan` (блокер PR).
-- **Static analysis**: Clang `-Werror`, clang-tidy (analyzer/bugprone/performance)
-  и cppcheck (warning/performance/portability), preset `static-analysis`.
+- **Static analysis**: Clang `-Werror`, clang-tidy (analyzer/bugprone — gate,
+  performance/readability — report) и cppcheck (warning/performance/portability),
+  preset `static-analysis`.
 - **Conan 2**: optional dependency provider job (`OPC_DEPENDENCY_PROVIDER=CONAN`).
 - Clang is supported locally with `-DCMAKE_CXX_FLAGS=-stdlib=libstdc++` when libstdc++ provides `std::expected`; not required in CI until runners ship a complete C++23 STL for Clang.
 - **Studio quality**: npm lockfile install, lint, TypeScript check, Vitest,
