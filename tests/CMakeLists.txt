@@ -20,6 +20,7 @@ add_executable(opc_tests
     test_modbus_tcp.cpp
     test_ua_encryption.cpp
     test_ua_username.cpp
+    test_otlp_live.cpp
     test_load_stand.cpp
 )
 

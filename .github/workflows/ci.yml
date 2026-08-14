@@ -40,6 +40,11 @@ jobs:
         run: ctest --preset ci --timeout 120
         # OPC UA smoke tests bind ephemeral ports; keep modest parallelism.
 
+      - name: OTLP live collector smoke
+        run: |
+          chmod +x scripts/ci/otlp_smoke.sh scripts/ci/otlp_http_receiver.py
+          OPC_BUILD_DIR="${GITHUB_WORKSPACE}/build/ci" ./scripts/ci/otlp_smoke.sh
+
       - name: Package binaries
         run: |
           cmake --install build/ci --prefix stage --component opc-server

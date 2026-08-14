@@ -15,7 +15,7 @@
 | **Roadmap ядра, этапы 0–7** | **100%** | 56 из 56 пунктов чеклиста (без Classic/DA и прочего «вне ядра») |
 | Инкременты после Studio (A–D + traces) | **100%** | A–D и хвост этапа 5 закрыты |
 
-«100%» — закрытые пункты спецификации ядра. Это **ещё не** полный промышленный контур: demo-plant остаётся на `None`, PKI по умолчанию AcceptAll (пока нет `--ua-strict-certs`), UDP — MBAP в датаграмме, не RTU, нагрузочный стенд — Catch2 smoke, OTLP в CI компилируется, но без живого коллектора.
+«100%» — закрытые пункты спецификации ядра. Это **ещё не** полный промышленный контур: demo-plant остаётся на `None`, UDP — MBAP в датаграмме, не RTU, нагрузочный стенд — Catch2 smoke. OTLP exporters + live collector smoke есть в CI; industrial CA / X.509 user tokens и полный async transport API — вне ядра.
 
 ## Сейчас (закрыто)
 
@@ -43,7 +43,7 @@
 2. ~~Промышленный PKI (fail-closed Sign/Encrypt, `--ua-crl`, `--ua-accept-untrusted`)~~ — `cursor/industrial-pki-860d`
 3. ~~Asio-native async Modbus TCP (ADR-0007)~~ — `cursor/async-modbus-tcp-860d`
 4. ~~Username token / AccessControl (`opcua.users`, `--ua-user`, Studio/opc-monitor)~~ — `cursor/username-token-860d`
-5. Живой OTLP-коллектор в CI (сейчас только compile-in exporters)
+5. ~~Живой OTLP-коллектор в CI~~ — `cursor/otlp-collector-ci-860d`
 6. Полный async `IModbusTransport` API (completion tokens) — опционально; сейчас sync facade поверх Asio async I/O
 
 ### Не в ядре (не входят в процент)
@@ -55,7 +55,6 @@
 - HTTP/WebSocket API в `OPC_SERVER` (отклонён ADR-0016)
 - Каталог вендорских device profiles сверх demo `generic-tank-sensor`
 - Industrial CA / X.509 user tokens сверх username AccessControl
-- Живой OTLP-коллектор в CI (сейчас только compile-in exporters)
 
 ## Исторический backlog (2019, закрыт)
 

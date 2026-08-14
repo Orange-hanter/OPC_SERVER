@@ -38,6 +38,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - OPC UA UsernameIdentityToken: `opcua.users` / `--ua-user`, fail-closed anonymous when
   users are set, `allowNonePassword` / `--ua-allow-none-password` for lab None mode;
   Studio and `opc-monitor` forward username/password
+- Live OTLP collector smoke in CI (`scripts/ci/otlp_smoke.sh`): Docker
+  `opentelemetry-collector-contrib` (file exporters) with Python OTLP/HTTP fallback;
+  Catch2 `[otlp][live]` gated by `OPC_OTLP_SMOKE=1`
 - Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
 - Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - `opc-map doctor`: register overlaps, unpolled tags, sparse/gappy poll blocks
