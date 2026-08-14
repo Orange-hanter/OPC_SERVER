@@ -16,7 +16,11 @@
 
 ### Jobs
 
-- **Ubuntu 24.04 + g++** (primary): CMake preset `ci` (`OPC_WITH_OTLP=ON`), `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days). Installs `libssl-dev`, `libcurl4-openssl-dev`, `protobuf-compiler` / `libprotobuf-dev`.
+- **Ubuntu 24.04 + g++** (primary): CMake preset `ci` (`OPC_WITH_OTLP=ON`), `ctest`,
+  **OTLP live collector smoke** (`scripts/ci/otlp_smoke.sh` — Docker
+  `otel/opentelemetry-collector-contrib` on `:4318`, Python OTLP/HTTP fallback),
+  package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
+  Installs `libssl-dev`, `libcurl4-openssl-dev`, `protobuf-compiler` / `libprotobuf-dev`.
 - **ASan + UBSan**: preset `asan` (GCC), full Catch2 suite.
 - **TSan**: preset `tsan` (GCC) on core/runtime tests; UA client smoke is skipped because open62541 is not TSan-instrumented.
 - **Conan 2**: optional dependency provider job (`OPC_DEPENDENCY_PROVIDER=CONAN` for Catch2; open62541 always FetchContent).

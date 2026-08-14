@@ -1,0 +1,30 @@
+# Minimal OpenTelemetry Collector config for CI OTLP smoke.
+# Receives OTLP/HTTP on :4318 and writes metrics/traces to /output.
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  file/metrics:
+    path: /output/metrics.json
+  file/traces:
+    path: /output/traces.json
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [file/metrics, debug]
+    traces:
+      receivers: [otlp]
+      exporters: [file/traces, debug]

@@ -20,9 +20,13 @@ ADR-0008 requires production logging via spdlog and metrics via OpenTelemetry be
 5. Dispatcher records `modbus_poll_rtt_ms` histogram on each tag poll.
 6. `MemoryMetrics` and `RecordingTracer` remain for unit tests that need in-process assertions.
 7. CMake preset `ci` sets `OPC_WITH_OTLP=ON` (protobuf + libcurl). Local `dev`/`release` stay OFF unless requested.
+8. **Live collector smoke** in CI (`scripts/ci/otlp_smoke.sh`): prefer Docker
+   `otel/opentelemetry-collector-contrib` with `ci/otel-collector.yaml` (file exporters under
+   `/output`); fall back to `scripts/ci/otlp_http_receiver.py`. Catch2 `[otlp][live]` runs only
+   when `OPC_OTLP_SMOKE=1`.
 
 ## Consequences
 
 - Core still only sees ports; no spdlog/OTel includes in `core/`.
-- Default developer builds avoid protobuf/curl; CI compiles OTLP exporters.
-- A live collector is not required in CI; tests use `none` / RecordingTracer.
+- Default developer builds avoid protobuf/curl; CI compiles OTLP exporters **and** exercises a live OTLP/HTTP sink.
+- Unit tests keep using `none` / RecordingTracer; live export is gated behind `OPC_OTLP_SMOKE`.
