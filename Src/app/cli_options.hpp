@@ -32,6 +32,14 @@ struct CliOptions {
     std::vector<std::string> ua_revocation_paths;
     bool ua_strict_certs{false};
     bool ua_accept_untrusted{false};  // lab escape hatch for Sign/Encrypt
+    struct UaUser {
+        std::string username;
+        std::string password;
+    };
+    std::vector<UaUser> ua_users;  // --ua-user user:pass (repeatable; merges into project)
+    bool ua_deny_anonymous{false};
+    bool ua_allow_anonymous{false};
+    bool ua_allow_none_password{false};  // lab: username over SecurityMode None
     bool help{false};
     bool version{false};
     std::vector<std::string> errors;

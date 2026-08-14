@@ -59,6 +59,8 @@ void print_usage(std::ostream& out) {
         << "             [--otlp-endpoint URL]\n"
         << "             [--runtime-doctor] [--ua-cert PATH] [--ua-key PATH] [--ua-trust PATH]\n"
         << "             [--ua-crl PATH] [--ua-strict-certs] [--ua-accept-untrusted]\n"
+        << "             [--ua-user user:pass] [--ua-deny-anonymous] [--ua-allow-anonymous]\n"
+        << "             [--ua-allow-none-password]\n"
         << "  OPC_SERVER --version\n"
         << "  OPC_SERVER --help\n\n"
         << "Options:\n"
@@ -86,6 +88,10 @@ void print_usage(std::ostream& out) {
         << "  --ua-crl <path>             Certificate revocation list file (repeatable)\n"
         << "  --ua-strict-certs           Reject untrusted certificates (default for Sign/Encrypt)\n"
         << "  --ua-accept-untrusted       Lab only: AcceptAll PKI for Sign/Encrypt (overrides trust)\n"
+        << "  --ua-user <user:pass>       Username token login (repeatable; merges into opcua.users)\n"
+        << "  --ua-deny-anonymous         Reject Anonymous IdentityToken\n"
+        << "  --ua-allow-anonymous        Allow Anonymous even when users are configured\n"
+        << "  --ua-allow-none-password    Lab: username/password over SecurityMode None\n"
         << "  --version                   Print version and exit\n";
 }
 
@@ -119,6 +125,35 @@ CliOptions parse_cli(int argc, char const* argv[]) {
         }
         if (arg == "--ua-accept-untrusted") {
             opts.ua_accept_untrusted = true;
+            continue;
+        }
+        if (arg == "--ua-deny-anonymous") {
+            opts.ua_deny_anonymous = true;
+            continue;
+        }
+        if (arg == "--ua-allow-anonymous") {
+            opts.ua_allow_anonymous = true;
+            continue;
+        }
+        if (arg == "--ua-allow-none-password") {
+            opts.ua_allow_none_password = true;
+            continue;
+        }
+        if (arg == "--ua-user") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-user requires user:pass");
+                break;
+            }
+            const std::string_view cred = argv[++i];
+            const auto colon = cred.find(':');
+            if (colon == std::string_view::npos || colon == 0) {
+                opts.errors.emplace_back("--ua-user expects user:pass (non-empty user)");
+                continue;
+            }
+            opts.ua_users.push_back(CliOptions::UaUser{
+                .username = std::string(cred.substr(0, colon)),
+                .password = std::string(cred.substr(colon + 1)),
+            });
             continue;
         }
         if (arg == "--ua-cert") {

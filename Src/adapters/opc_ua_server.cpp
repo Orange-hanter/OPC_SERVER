@@ -4,6 +4,7 @@
 #include "domain/tag_value_util.hpp"
 
 #include <open62541/plugin/accesscontrol.h>
+#include <open62541/plugin/accesscontrol_default.h>
 #include <open62541/plugin/pki_default.h>
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
@@ -63,6 +64,62 @@ void keep_security_endpoints(UA_ServerConfig* config,
         }
     }
     config->endpointsSize = write;
+}
+
+[[nodiscard]] domain::Result<void> apply_identity_access_control(
+    UA_ServerConfig* config, const project::OpcUaSettings& opcua, ports::ILog* log) {
+    const bool customize = !opcua.users.empty() || !opcua.allow_anonymous;
+    if (!customize) {
+        return {};
+    }
+
+    if (!opcua.users.empty() && opcua.security_mode == project::SecurityMode::None &&
+        !opcua.allow_none_password) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::InvalidArgument,
+            "username/password with SecurityMode None requires opcua.allowNonePassword "
+            "or --ua-allow-none-password (credentials would be plaintext)",
+            "adapters.opcua",
+            false});
+    }
+
+    std::vector<UA_UsernamePasswordLogin> logins;
+    logins.reserve(opcua.users.size());
+    for (const auto& user : opcua.users) {
+        UA_UsernamePasswordLogin entry{};
+        entry.username = UA_STRING_ALLOC(user.username.c_str());
+        entry.password = UA_STRING_ALLOC(user.password.c_str());
+        logins.push_back(entry);
+    }
+
+    const UA_StatusCode status = UA_AccessControl_default(
+        config, opcua.allow_anonymous ? UA_TRUE : UA_FALSE, nullptr, logins.size(),
+        logins.empty() ? nullptr : logins.data());
+
+    for (auto& entry : logins) {
+        UA_String_clear(&entry.username);
+        UA_String_clear(&entry.password);
+    }
+
+    if (status != UA_STATUSCODE_GOOD) {
+        return std::unexpected(domain::Error{domain::ErrorCode::Internal,
+                                             "UA_AccessControl_default failed",
+                                             "adapters.opcua",
+                                             false});
+    }
+
+    if (!opcua.users.empty() && opcua.security_mode == project::SecurityMode::None &&
+        opcua.allow_none_password) {
+        config->allowNonePolicyPassword = true;
+        log_msg(log, ports::LogLevel::Warn,
+                "username/password allowed over SecurityMode None (allowNonePassword)");
+    }
+
+    log_msg(log, ports::LogLevel::Info,
+            opcua.allow_anonymous
+                ? "AccessControl: username tokens configured (anonymous allowed)"
+                : "AccessControl: username tokens configured (anonymous denied)");
+    return {};
 }
 
 struct SessionHooks {
@@ -152,8 +209,23 @@ void install_session_hooks(UA_Server* server, opc::adapters::OpcUaServer* self) 
 }
 
 void uninstall_session_hooks(UA_Server* server) {
+    UA_ServerConfig* config = server != nullptr ? UA_Server_getConfig(server) : nullptr;
     std::lock_guard lock(g_session_hooks_mu);
-    g_session_hooks.erase(server);
+    const auto it = g_session_hooks.find(server);
+    if (it == g_session_hooks.end()) {
+        return;
+    }
+    // Restore AccessControl callbacks before erase so a late ActivateSession cannot
+    // see missing hooks and skip username checks (fail-open).
+    if (config != nullptr) {
+        if (it->second.orig_activate != nullptr) {
+            config->accessControl.activateSession = it->second.orig_activate;
+        }
+        if (it->second.orig_close != nullptr) {
+            config->accessControl.closeSession = it->second.orig_close;
+        }
+    }
+    g_session_hooks.erase(it);
 }
 
 }  // namespace
@@ -667,6 +739,12 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
         config->serverUrlsSize = 1;
     }
 
+    if (auto identity = apply_identity_access_control(config, project_->opcua, log_); !identity) {
+        UA_Server_delete(server_);
+        server_ = nullptr;
+        return identity;
+    }
+
     install_session_hooks(server_, this);
     if (metrics_ != nullptr) {
         metrics_->gauge_set("ua_sessions", 0.0);
@@ -740,6 +818,9 @@ void OpcUaServer::stop() {
         last_error_.clear();
         diagnostics_dirty_ = false;
         active_sessions_.clear();
+    }
+    if (metrics_ != nullptr) {
+        metrics_->gauge_set("ua_sessions", 0.0);
     }
     diagnostics_state_node_ = 0;
     diagnostics_good_node_ = 0;

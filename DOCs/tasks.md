@@ -42,7 +42,7 @@
 1. ~~CI hardening: TSan races, Conan open62541 plugins, Studio Win/macOS OpenSSL/C++23~~ — `cursor/ci-hardening-860d`
 2. ~~Промышленный PKI (fail-closed Sign/Encrypt, `--ua-crl`, `--ua-accept-untrusted`)~~ — `cursor/industrial-pki-860d`
 3. ~~Asio-native async Modbus TCP (ADR-0007)~~ — `cursor/async-modbus-tcp-860d`
-4. Username token / industrial CA identity (следующий шаг PKI)
+4. ~~Username token / AccessControl (`opcua.users`, `--ua-user`, Studio/opc-monitor)~~ — `cursor/username-token-860d`
 5. Живой OTLP-коллектор в CI (сейчас только compile-in exporters)
 6. Полный async `IModbusTransport` API (completion tokens) — опционально; сейчас sync facade поверх Asio async I/O
 
@@ -54,7 +54,7 @@
 - Другие полевые протоколы без отдельного эпика Translator
 - HTTP/WebSocket API в `OPC_SERVER` (отклонён ADR-0016)
 - Каталог вендорских device profiles сверх demo `generic-tank-sensor`
-- Username token / industrial CA сверх fail-closed channel PKI
+- Industrial CA / X.509 user tokens сверх username AccessControl
 - Живой OTLP-коллектор в CI (сейчас только compile-in exporters)
 
 ## Исторический backlog (2019, закрыт)

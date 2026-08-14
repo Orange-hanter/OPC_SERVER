@@ -116,7 +116,18 @@ Root
 - Sign/Encrypt по умолчанию **без** AcceptAll (нужен trust list или `--ua-accept-untrusted` для стенда);
 - `--ua-strict-certs` — явно запретить AcceptAll (побеждает `--ua-accept-untrusted`).
 
-Studio / `opc-monitor` принимают `securityMode` `Sign`/`SignAndEncrypt` и пути `certificate`/`privateKey`; пустые пути → самоподписанный клиентский сертификат. Username/password по-прежнему отклоняются (отдельный эпик промышленного identity).
+Studio / `opc-monitor` принимают `securityMode` `Sign`/`SignAndEncrypt`, пути `certificate`/`privateKey`
+и опциональные `username`/`password` (UsernameIdentityToken). Пустые пути сертификата → самоподписанный
+клиентский сертификат.
+
+Серверная идентичность (проект / CLI):
+
+- `opcua.users[]` `{username,password}` или `--ua-user user:pass` (повторяемый);
+- при наличии users Anonymous по умолчанию **выключен** (`allowAnonymous: false`), иначе
+  `--ua-deny-anonymous` / `--ua-allow-anonymous`;
+- username/password при `securityMode: None` — только с `opcua.allowNonePassword` /
+  `--ua-allow-none-password` (иначе `start()` отказывается: plaintext credentials);
+- для промышленного контура предпочитайте Sign/SignAndEncrypt + users.
 
 ## Граница с OPC Classic / DA
 

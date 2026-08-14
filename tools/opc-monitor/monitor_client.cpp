@@ -353,7 +353,10 @@ struct MonitorClient::Impl {
             emit_connection("disconnected", UA_STATUSCODE_BADSECURITYCHECKSFAILED, command);
             return false;
         }
-        const auto status = UA_Client_connect(client, endpoint.c_str());
+        const auto status = username.empty()
+                                ? UA_Client_connect(client, endpoint.c_str())
+                                : UA_Client_connectUsername(client, endpoint.c_str(),
+                                                            username.c_str(), password.c_str());
         if (status != UA_STATUSCODE_GOOD) {
             connected = false;
             emit_connection("disconnected", status, command);
@@ -382,6 +385,14 @@ struct MonitorClient::Impl {
         security_policy = command.value("securityPolicy", "None");
         certificate_path = command.value("certificate", "");
         private_key_path = command.value("privateKey", "");
+        username.clear();
+        password.clear();
+        if (command.contains("username") && command["username"].is_string()) {
+            username = command["username"].get<std::string>();
+        }
+        if (command.contains("password") && command["password"].is_string()) {
+            password = command["password"].get<std::string>();
+        }
         want_connected = true;
         reset_client();
         establish(&command);
@@ -641,6 +652,8 @@ struct MonitorClient::Impl {
     std::string security_policy{"None"};
     std::string certificate_path;
     std::string private_key_path;
+    std::string username;
+    std::string password;
     bool security_ok{true};
     bool connected{false};
     bool want_connected{false};
