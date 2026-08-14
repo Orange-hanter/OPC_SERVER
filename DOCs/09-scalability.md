@@ -41,4 +41,4 @@
 - [ ] Нет read-per-tag там, где возможен блок.
 - [ ] Writable теги осознанны и малочисленны.
 - [ ] Timeouts согласованы с period (timeout < period для single-inflight).
-- [ ] `opc-map doctor` (будущее) не орёт о пересечениях и дырах.
+- [ ] `opc-map doctor` по проекту не орёт о пересечениях и дырах.

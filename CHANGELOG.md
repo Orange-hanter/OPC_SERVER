@@ -48,7 +48,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Roadmap snapshot (2026-08-13): инкременты A–C закрыты; дальше D (security/нагрузка)
+- Roadmap snapshot (2026-08-14): инкременты A–C закрыты (~90% чеклиста этапов 0–7);
+  живой backlog и процент — `DOCs/tasks.md`; дальше D (security/нагрузка/UDP)
 
 ### Fixed
 

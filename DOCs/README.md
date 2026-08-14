@@ -2,7 +2,7 @@
 
 Промышленный шлюз **Modbus → OPC UA → SCADA**: диспетчеризация опроса, отладка, трансляция протоколов/семантики и накопление данных.
 
-Документы описывают целевую архитектуру и проектную спецификацию. Реализация кода идёт по [roadmap](07-roadmap.md). Исторический backlog опроса Modbus: [tasks.md](tasks.md).
+Документы описывают целевую архитектуру и проектную спецификацию. Реализация кода идёт по [roadmap](07-roadmap.md). Живой список задач и процент выполнения: [tasks.md](tasks.md).
 
 **Сначала читайте:** [engineering standards](08-engineering-standards.md) → [ADR](adr/README.md) → [architecture](02-architecture.md).
 
@@ -16,7 +16,9 @@
 | [04 — Информационная модель OPC UA](04-opcua-information-model.md) | Адресное пространство, Quality, Subscriptions |
 | [05 — Технологический стек](05-tech-stack.md) | C++26, библиотеки, toolchain |
 | [06 — Диспетчеризация, отладка, трансляция, накопление](06-dispatch-debug-store.md) | Операционные подсистемы |
-| [07 — Roadmap](07-roadmap.md) | Снимок факта, этапы, следующие инкременты A–D |
+| [07 — Roadmap](07-roadmap.md) | Снимок факта, этапы, инкременты A–D |
+| [tasks.md](tasks.md) | Живой backlog и процент выполнения |
+
 | [08 — Engineering standards](08-engineering-standards.md) | Слои, naming, зависимости, DoD |
 | [09 — Scalability](09-scalability.md) | Изоляция endpoint, рост тегов/клиентов |
 | [10 — Quality gates](10-quality-gates.md) | Ворота merge / CI |

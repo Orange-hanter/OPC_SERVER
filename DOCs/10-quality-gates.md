@@ -8,7 +8,7 @@
 |------|--------------------|
 | Configure | `cmake --preset dev` (или `cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug`) |
 | Build | `cmake --build --preset dev` |
-| Unit/component tests | `ctest --preset dev` — 100% pass (~40 Catch2 cases + Studio Vitest при затрагивании frontend) |
+| Unit/component tests | `ctest --preset dev` — 100% pass (~59 Catch2 cases + Studio Vitest при затрагивании frontend) |
 | CI | Workflow **CI** green on PR (GCC `ci` preset + Conan; Studio jobs если меняется `frontend/`) |
 | Format | `clang-format -i` на изменённых `*.hpp/*.cpp`; diff format clean |
 | Architecture | Diff не нарушает таблицу зависимостей из [08](08-engineering-standards.md) |

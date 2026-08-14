@@ -1,8 +1,10 @@
 # 07. Roadmap реализации
 
-Документация в `DOCs/` задаёт целевое состояние. Ниже — **снимок факта** (что уже в `master`) и **порядок следующих инкрементов**. Исторический backlog опроса IoT/Modbus сохранён в [tasks.md](tasks.md) и покрывается этапами 1–2.
+Документация в `DOCs/` задаёт целевое состояние. Ниже — **снимок факта** и **порядок следующих инкрементов**. Живой backlog и процент выполнения: [tasks.md](tasks.md).
 
-Снимок: **2026-08-13**. Инкременты A (Asio), B (CI/schema/FC15) и C (карты: CSV/nodeset/профили/runtime doctor) закрыты в этой линии веток.
+Снимок: **2026-08-14**. Инкременты A (Asio), B (CI/schema/FC15) и C (карты: CSV/nodeset/профили/runtime doctor) закрыты в этой линии веток. Сводка задач и процент: [tasks.md](tasks.md).
+
+**Выполнение roadmap ядра (этапы 0–7, без Classic/DA):** ~90% пунктов чеклиста. Лабораторный MVP — 100%. Этап 7 / инкремент D — 0%.
 
 ## Где мы сейчас
 
@@ -30,7 +32,7 @@
 | `import-csv` / `gen-nodeset` / профили устройств / runtime doctor | Есть — инкремент C |
 | Sign / SignAndEncrypt | Нет |
 
-Тесты: ~40 Catch2 cases (project, doctor, core, UA smoke, historian, frame replay, opc-monitor) + Studio Vitest. Preset `asan` есть локально, в CI не гоняется.
+Тесты: 59 Catch2 cases (project, doctor, import-csv, gen-nodeset, runtime doctor, core, UA smoke, historian, frame replay, opc-monitor) + Studio Vitest. Presets `asan` / `tsan` гоняются в CI (инкремент B).
 
 ## Этапы (факт)
 
@@ -121,9 +123,9 @@
 
 ### Этап 7 — Промышленное укрепление
 
-- Sign / SignAndEncrypt, сертификаты (open62541 encryption build)
-- Нагрузочные тесты (число тегов, RTT)
-- UDP Modbus при необходимости
+- [ ] Sign / SignAndEncrypt, сертификаты (open62541 encryption build)
+- [ ] Нагрузочные тесты (число тегов, RTT)
+- [ ] UDP Modbus при необходимости
 - (Опционально) исследование внешнего моста UA↔Classic/DA — **не** ядро
 
 ## Следующие инкременты (порядок работ)
