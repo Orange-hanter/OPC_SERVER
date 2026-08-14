@@ -23,7 +23,8 @@ struct CliOptions {
     LogLevelOption log_level{LogLevelOption::Info};
     std::string log_file;  // empty = stderr only
     MetricsExportOption metrics_export{MetricsExportOption::None};
-    std::string otlp_endpoint;  // used when metrics_export == OtlpHttp
+    MetricsExportOption traces_export{MetricsExportOption::None};
+    std::string otlp_endpoint;  // used when metrics or traces export == OtlpHttp
     bool runtime_doctor{false};
     std::string ua_cert_path;
     std::string ua_key_path;

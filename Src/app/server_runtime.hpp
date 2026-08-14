@@ -11,6 +11,7 @@
 #include "ports/i_metrics.hpp"
 #include "ports/i_modbus_transport.hpp"
 #include "ports/i_opc_ua_facade.hpp"
+#include "ports/i_tracer.hpp"
 #include "project/types.hpp"
 
 #include <chrono>
@@ -38,6 +39,7 @@ struct ServerRuntimeDeps {
     ports::ILog* log{nullptr};
     ports::IHistorian* historian{nullptr};
     ports::IFrameLog* frame_log{nullptr};
+    ports::ITracer* tracer{nullptr};
     TransportFactory transport_factory;
     /// Optional northbound OPC UA facade (owned by caller or moved in).
     std::unique_ptr<ports::IOpcUaFacade> opcua;
@@ -91,6 +93,7 @@ private:
     ports::ILog* log_{nullptr};
     ports::IHistorian* historian_{nullptr};
     ports::IFrameLog* frame_log_{nullptr};
+    ports::ITracer* tracer_{nullptr};
     TransportFactory transport_factory_;
     std::unordered_map<std::string, std::unique_ptr<ports::IModbusTransport>> transports_;
     std::unique_ptr<ports::IOpcUaFacade> opcua_;

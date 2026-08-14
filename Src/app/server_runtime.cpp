@@ -36,6 +36,7 @@ ServerRuntime::ServerRuntime(ServerRuntimeDeps deps)
       log_(deps.log),
       historian_(deps.historian),
       frame_log_(deps.frame_log),
+      tracer_(deps.tracer),
       transport_factory_(std::move(deps.transport_factory)),
       opcua_(std::move(deps.opcua)) {
     dispatcher_ = std::make_unique<core::Dispatcher>(core::Dispatcher::Dependencies{
@@ -43,6 +44,7 @@ ServerRuntime::ServerRuntime(ServerRuntimeDeps deps)
         .tag_store = &tag_store_,
         .clock = clock_,
         .metrics = metrics_,
+        .tracer = tracer_,
     });
 }
 

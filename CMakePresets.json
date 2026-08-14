@@ -41,11 +41,12 @@
     {
       "name": "ci",
       "displayName": "Continuous integration",
-      "description": "Release-mode build with tests enabled",
+      "description": "Release-mode build with tests and OTLP exporters enabled",
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "BUILD_TESTING": true
+        "BUILD_TESTING": true,
+        "OPC_WITH_OTLP": true
       }
     },
     {

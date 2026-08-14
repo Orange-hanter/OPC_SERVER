@@ -3,6 +3,7 @@
 
 #include "adapters/system_clock.hpp"
 #include "adapters/testsupport/fake_modbus_transport.hpp"
+#include "adapters/testsupport/recording_tracer.hpp"
 #include "core/dispatcher.hpp"
 #include "core/runtime_index.hpp"
 #include "core/tag_store.hpp"
@@ -232,3 +233,43 @@ TEST_CASE("Dispatcher coalesces consecutive coil writes into FC15", "[core][disp
     CHECK((*coils)[0] == true);
     CHECK((*coils)[1] == false);
 }
+
+TEST_CASE("Dispatcher records poll and write spans", "[core][dispatcher][trace]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    opc::adapters::testsupport::RecordingTracer tracer;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}).has_value());
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+        .tracer = &tracer,
+    });
+    dispatcher.bind_transport("ep1", &transport);
+    REQUIRE(dispatcher.poll_due("ep1", 1'000).has_value());
+
+    auto poll_spans = tracer.snapshot();
+    REQUIRE(poll_spans.size() == 1);
+    CHECK(poll_spans[0].name == "modbus.poll");
+    CHECK(poll_spans[0].attributes["endpoint_id"] == "ep1");
+    CHECK_FALSE(poll_spans[0].error);
+
+    auto sp = index.find_by_name("Setpoint");
+    REQUIRE(sp);
+    REQUIRE(dispatcher.enqueue_write(sp->id, std::uint16_t{11}).has_value());
+    REQUIRE(dispatcher.flush_writes("ep1").has_value());
+
+    auto after = tracer.snapshot();
+    REQUIRE(after.size() == 2);
+    CHECK(after[1].name == "modbus.write");
+    CHECK(after[1].attributes["endpoint_id"] == "ep1");
+    CHECK(after[1].attributes["write_count"] == "1");
+    CHECK_FALSE(after[1].error);
+}
+
