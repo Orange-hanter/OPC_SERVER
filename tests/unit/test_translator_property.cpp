@@ -5,6 +5,7 @@
 
 #include "core/translator.hpp"
 
+#include <array>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -155,4 +156,63 @@ TEST_CASE("Translator rejects non-finite and overflowing scale results",
     auto decoded = Translator::decode(scaled_u16, raw_max);
     REQUIRE_FALSE(decoded);
     CHECK(decoded.error().code == opc::domain::ErrorCode::InvalidArgument);
+}
+
+TEST_CASE("Translator 32-bit byte orders match exact Modbus wire registers",
+          "[unit][core][translator][contract]") {
+    struct Case {
+        const char* order;
+        std::array<std::uint16_t, 2> registers;
+    };
+    constexpr std::array cases = {
+        Case{"ABCD", {0x1122, 0x3344}},
+        Case{"CDAB", {0x3344, 0x1122}},
+        Case{"BADC", {0x2211, 0x4433}},
+        Case{"DCBA", {0x4433, 0x2211}},
+    };
+
+    for (const auto& test : cases) {
+        CAPTURE(test.order);
+        Tag tag = make_tag(TagType::UInt32, test.order);
+        auto encoded = Translator::encode(tag, std::uint32_t{0x11223344U});
+        REQUIRE(encoded);
+        REQUIRE(encoded->size() == 2);
+        CHECK((*encoded)[0] == test.registers[0]);
+        CHECK((*encoded)[1] == test.registers[1]);
+
+        auto decoded = Translator::decode(tag, test.registers);
+        REQUIRE(decoded);
+        CHECK(std::get<std::uint32_t>(*decoded) == 0x11223344U);
+    }
+}
+
+TEST_CASE("Translator default byte orders match the project format contract",
+          "[unit][core][translator][contract]") {
+    Tag u16 = make_tag(TagType::UInt16, {});
+    auto u16_encoded = Translator::encode(u16, std::uint16_t{0x1234});
+    REQUIRE(u16_encoded);
+    CHECK(*u16_encoded == std::vector<std::uint16_t>{0x1234});
+
+    Tag u32 = make_tag(TagType::UInt32, {});
+    auto u32_encoded = Translator::encode(u32, std::uint32_t{0x11223344U});
+    REQUIRE(u32_encoded);
+    CHECK(*u32_encoded == std::vector<std::uint16_t>{0x1122, 0x3344});
+
+    Tag f64 = make_tag(TagType::Float64, {});
+    auto f64_encoded = Translator::encode(f64, 1.0);
+    REQUIRE(f64_encoded);
+    CHECK(*f64_encoded == std::vector<std::uint16_t>{0x3FF0, 0x0000, 0x0000, 0x0000});
+}
+
+TEST_CASE("Translator integer scaling rounds to the nearest raw register",
+          "[unit][core][translator][contract]") {
+    Tag tag = make_tag(TagType::Int16, "AB", 2.0, 1.0);
+
+    auto positive = Translator::encode(tag, std::int16_t{6});
+    REQUIRE(positive);
+    CHECK(*positive == std::vector<std::uint16_t>{3});
+
+    auto negative = Translator::encode(tag, std::int16_t{-4});
+    REQUIRE(negative);
+    CHECK(*negative == std::vector<std::uint16_t>{0xFFFD});
 }

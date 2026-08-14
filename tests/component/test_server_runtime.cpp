@@ -12,7 +12,9 @@
 
 #include <memory>
 #include <sstream>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 using opc::adapters::ManualClock;
 using opc::adapters::testsupport::FakeModbusTransport;
@@ -56,6 +58,114 @@ TEST_CASE("parse_cli recognizes project and once/watch", "[component][app][cli]"
     CHECK(opts.once);
     CHECK(opts.watch);
     CHECK(opts.watch_period_ms == 250);
+}
+
+TEST_CASE("parse_cli preserves defaults and recognizes short informational flags",
+          "[component][app][cli]") {
+    const char* defaults_argv[] = {"OPC_SERVER"};
+    const auto defaults = opc::app::parse_cli(1, defaults_argv);
+    CHECK(defaults.errors.empty());
+    CHECK(defaults.enable_opcua);
+    CHECK(defaults.enable_historian);
+    CHECK_FALSE(defaults.once);
+    CHECK_FALSE(defaults.watch);
+    CHECK(defaults.watch_period_ms == 1000);
+    CHECK(defaults.historian_capacity == 4096);
+
+    const char* flags_argv[] = {"OPC_SERVER", "-h", "-V", "--no-opcua"};
+    const auto flags = opc::app::parse_cli(4, flags_argv);
+    CHECK(flags.errors.empty());
+    CHECK(flags.help);
+    CHECK(flags.version);
+    CHECK_FALSE(flags.enable_opcua);
+}
+
+TEST_CASE("parse_cli rejects missing option values", "[component][app][cli]") {
+    const std::vector<std::string> options = {
+        "--project",
+        "--period-ms",
+        "--historian-capacity",
+        "--historian-db",
+        "--frame-log",
+        "--log-level",
+        "--log-file",
+        "--metrics-export",
+        "--otlp-endpoint",
+    };
+
+    for (const auto& option : options) {
+        CAPTURE(option);
+        const char* argv[] = {"OPC_SERVER", option.c_str()};
+        const auto parsed = opc::app::parse_cli(2, argv);
+        REQUIRE(parsed.errors.size() == 1);
+        CHECK(parsed.errors.front().find("requires") != std::string::npos);
+    }
+}
+
+TEST_CASE("parse_cli validates numeric bounds and enum values", "[component][app][cli]") {
+    SECTION("period lower bound") {
+        const char* argv[] = {"OPC_SERVER", "--period-ms", "9"};
+        const auto parsed = opc::app::parse_cli(3, argv);
+        REQUIRE(parsed.errors.size() == 1);
+        CHECK(parsed.errors.front() == "--period-ms must be >= 10");
+    }
+    SECTION("period non-number") {
+        const char* argv[] = {"OPC_SERVER", "--period-ms", "fast"};
+        const auto parsed = opc::app::parse_cli(3, argv);
+        REQUIRE(parsed.errors.size() == 1);
+        CHECK(parsed.errors.front() == "invalid --period-ms value");
+    }
+    SECTION("historian capacity lower bound") {
+        const char* argv[] = {"OPC_SERVER", "--historian-capacity", "0"};
+        const auto parsed = opc::app::parse_cli(3, argv);
+        REQUIRE(parsed.errors.size() == 1);
+        CHECK(parsed.errors.front() == "--historian-capacity must be >= 1");
+    }
+    SECTION("historian capacity non-number") {
+        const char* argv[] = {"OPC_SERVER", "--historian-capacity", "many"};
+        const auto parsed = opc::app::parse_cli(3, argv);
+        REQUIRE(parsed.errors.size() == 1);
+        CHECK(parsed.errors.front() == "invalid --historian-capacity value");
+    }
+    SECTION("unknown log level") {
+        const char* argv[] = {"OPC_SERVER", "--log-level", "verbose"};
+        const auto parsed = opc::app::parse_cli(3, argv);
+        REQUIRE(parsed.errors.size() == 1);
+        CHECK(parsed.errors.front().find("invalid --log-level") != std::string::npos);
+    }
+    SECTION("unknown metrics exporter") {
+        const char* argv[] = {"OPC_SERVER", "--metrics-export", "prometheus"};
+        const auto parsed = opc::app::parse_cli(3, argv);
+        REQUIRE(parsed.errors.size() == 1);
+        CHECK(parsed.errors.front().find("invalid --metrics-export") != std::string::npos);
+    }
+    SECTION("unknown argument") {
+        const char* argv[] = {"OPC_SERVER", "--surprise"};
+        const auto parsed = opc::app::parse_cli(2, argv);
+        REQUIRE(parsed.errors.size() == 1);
+        CHECK(parsed.errors.front() == "unknown argument: --surprise");
+    }
+}
+
+TEST_CASE("parse_cli accepts documented aliases", "[component][app][cli]") {
+    SECTION("warning log level") {
+        const char* argv[] = {"OPC_SERVER", "--log-level", "warning"};
+        const auto parsed = opc::app::parse_cli(3, argv);
+        REQUIRE(parsed.errors.empty());
+        CHECK(parsed.log_level == opc::app::LogLevelOption::Warn);
+    }
+    SECTION("stdout metrics") {
+        const char* argv[] = {"OPC_SERVER", "--metrics-export", "stdout"};
+        const auto parsed = opc::app::parse_cli(3, argv);
+        REQUIRE(parsed.errors.empty());
+        CHECK(parsed.metrics_export == opc::app::MetricsExportOption::OStream);
+    }
+    SECTION("otlp-http metrics") {
+        const char* argv[] = {"OPC_SERVER", "--metrics-export", "otlp-http"};
+        const auto parsed = opc::app::parse_cli(3, argv);
+        REQUIRE(parsed.errors.empty());
+        CHECK(parsed.metrics_export == opc::app::MetricsExportOption::OtlpHttp);
+    }
 }
 
 TEST_CASE("ServerRuntime bootstraps with injected fake transport", "[component][app][runtime]") {

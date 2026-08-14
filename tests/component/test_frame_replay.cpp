@@ -92,3 +92,121 @@ TEST_CASE("parse_frame_log_line rejects comments", "[component][adapters][replay
     auto parsed = opc::adapters::parse_frame_log_line("# header");
     REQUIRE_FALSE(parsed);
 }
+
+TEST_CASE("ReplayModbusTransport reports connection state and exhaustion",
+          "[component][adapters][replay]") {
+    ReplayModbusTransport transport({holding_read_frame(7)});
+
+    auto disconnected = transport.read_holding_registers(1, 0, 1);
+    REQUIRE_FALSE(disconnected);
+    CHECK(disconnected.error().code == opc::domain::ErrorCode::Connection);
+    CHECK(disconnected.error().retryable);
+
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+    REQUIRE(transport.read_holding_registers(1, 0, 1));
+    auto exhausted = transport.read_holding_registers(1, 0, 1);
+    REQUIRE_FALSE(exhausted);
+    CHECK(exhausted.error().code == opc::domain::ErrorCode::NotFound);
+
+    transport.close();
+    CHECK_FALSE(transport.is_connected());
+}
+
+TEST_CASE("ReplayModbusTransport preserves recorded transport and Modbus errors",
+          "[component][adapters][replay]") {
+    opc::ports::FrameRecord connection_error;
+    connection_error.error = "peer reset";
+
+    opc::ports::FrameRecord modbus_error;
+    modbus_error.exception_code = 3;
+
+    ReplayModbusTransport transport({connection_error, modbus_error});
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+
+    auto first = transport.read_holding_registers(1, 0, 1);
+    REQUIRE_FALSE(first);
+    CHECK(first.error().code == opc::domain::ErrorCode::Connection);
+    CHECK(first.error().message == "peer reset");
+    CHECK(first.error().retryable);
+
+    auto second = transport.read_holding_registers(1, 0, 1);
+    REQUIRE_FALSE(second);
+    CHECK(second.error().code == opc::domain::ErrorCode::ModbusException);
+    REQUIRE(second.error().protocol_status);
+    CHECK(*second.error().protocol_status == 3);
+}
+
+TEST_CASE("ReplayModbusTransport rejects malformed replay responses",
+          "[component][adapters][replay]") {
+    auto short_rx = holding_read_frame(1);
+    short_rx.rx.resize(7);
+
+    auto wrong_mbap_length = holding_read_frame(2);
+    wrong_mbap_length.rx[5] = 0x06;
+
+    auto wrong_byte_count = holding_read_frame(3);
+    wrong_byte_count.rx[8] = 0x04;
+
+    ReplayModbusTransport transport({short_rx, wrong_mbap_length, wrong_byte_count});
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+
+    for (int i = 0; i < 3; ++i) {
+        CAPTURE(i);
+        auto result = transport.read_holding_registers(1, 0, 1);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().code == opc::domain::ErrorCode::Decoding);
+    }
+    CHECK(transport.remaining() == 0);
+}
+
+TEST_CASE("ReplayModbusTransport decodes packed bits across byte boundary",
+          "[component][adapters][replay]") {
+    opc::ports::FrameRecord frame;
+    frame.rx = {0x00, 0x01, 0x00, 0x00, 0x00, 0x05, 0x01, 0x01, 0x02, 0x55, 0x03};
+
+    ReplayModbusTransport transport({frame});
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 1502}));
+    auto bits = transport.read_coils(1, 0, 10);
+
+    REQUIRE(bits);
+    REQUIRE(bits->size() == 10);
+    CHECK((*bits)[0]);
+    CHECK_FALSE((*bits)[1]);
+    CHECK((*bits)[8]);
+    CHECK((*bits)[9]);
+}
+
+TEST_CASE("parse_frame_log_line parses metadata and mixed-case hex",
+          "[component][adapters][replay]") {
+    auto parsed = opc::adapters::parse_frame_log_line(
+        "  123 ep7 2.5 4 \"timeout\" 0a FF | 01 bC  ");
+
+    REQUIRE(parsed);
+    CHECK(parsed->ts_ms == 123);
+    CHECK(parsed->endpoint_id == "ep7");
+    CHECK(parsed->rtt_ms == Catch::Approx(2.5));
+    REQUIRE(parsed->exception_code);
+    CHECK(*parsed->exception_code == 4);
+    REQUIRE(parsed->error);
+    CHECK(*parsed->error == "timeout");
+    CHECK(parsed->tx == std::vector<std::uint8_t>{0x0A, 0xFF});
+    CHECK(parsed->rx == std::vector<std::uint8_t>{0x01, 0xBC});
+}
+
+TEST_CASE("parse_frame_log_line rejects malformed journal fields",
+          "[component][adapters][replay]") {
+    const std::vector<std::string_view> invalid = {
+        "",
+        "123 ep 1 - - 00",
+        "bad prefix | 00",
+        "123 ep 1 nope - 00 | 00",
+        "123 ep 1 - - 0 | 00",
+        "123 ep 1 - - 0g | 00",
+        "123 ep 1 - - 00 | f",
+    };
+
+    for (const auto line : invalid) {
+        CAPTURE(line);
+        CHECK_FALSE(opc::adapters::parse_frame_log_line(line));
+    }
+}

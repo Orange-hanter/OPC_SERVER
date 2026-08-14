@@ -3,6 +3,7 @@
 #include "project/load.hpp"
 #include "project/migrate_legacy.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
@@ -28,6 +29,14 @@ fs::path repo_root() {
 #else
     return fs::current_path();
 #endif
+}
+
+bool has_diagnostic(const opc::project::LoadResult& result,
+                    std::string_view path,
+                    std::string_view message) {
+    return std::ranges::any_of(result.diagnostics, [&](const auto& diagnostic) {
+        return diagnostic.path == path && diagnostic.message.find(message) != std::string::npos;
+    });
 }
 
 }  // namespace
@@ -158,4 +167,103 @@ TEST_CASE("semantic validation rejects writable input, bad byteOrder and duplica
     CHECK(byte_order);
     CHECK(duplicate);
     CHECK(period);
+}
+
+TEST_CASE("project validation reports identity, reference and Modbus range violations",
+          "[contract][project][validation]") {
+    constexpr std::string_view kJson = R"({
+      "schemaVersion": 1,
+      "name": "bounds",
+      "endpoints": [
+        {"id": "ep", "host": "127.0.0.1", "port": 502, "transport": "tcp",
+         "connectTimeoutMs": 0},
+        {"id": "ep", "host": "127.0.0.2", "port": 502, "transport": "tcp"}
+      ],
+      "devices": [
+        {"id": "d", "endpointId": "ep", "unitId": -1, "profileId": "missing", "tags": [
+          {"name": "Negative", "area": "holding", "address": -1, "type": "uint16",
+           "byteOrder": "AB", "quantity": 0}
+        ]},
+        {"id": "d", "endpointId": "ep", "unitId": 256, "tags": [
+          {"name": "Other", "area": "coil", "address": 0, "type": "bool"}
+        ]}
+      ],
+      "pollGroups": [
+        {"id": "g", "periodMs": 100, "priority": "normal", "deviceId": "d",
+         "tagNames": ["Absent"],
+         "blocks": [
+           {"area": "holding", "start": -1, "count": 1},
+           {"area": "holding", "start": 0, "count": 126}
+         ]},
+        {"id": "g", "periodMs": 100, "priority": "normal", "deviceId": "missing",
+         "tagNames": ["Anything"]}
+      ]
+    })";
+
+    const auto result = opc::project::load_json_text(kJson, "bounds.json");
+    REQUIRE_FALSE(result.ok);
+    CHECK(has_diagnostic(result, "endpoints[0]", "timeouts must be >= 1"));
+    CHECK(has_diagnostic(result, "endpoints[1].id", "duplicate endpoint id"));
+    CHECK(has_diagnostic(result, "devices[0].unitId", "unitId must be in [0, 255]"));
+    CHECK(has_diagnostic(result, "devices[0].profileId", "unknown profileId"));
+    CHECK(has_diagnostic(result, "devices[0].tags[0].address", "address must be >= 0"));
+    CHECK(has_diagnostic(result, "devices[0].tags[0].quantity", "quantity must be >= 1"));
+    CHECK(has_diagnostic(result, "devices[1].id", "duplicate device id"));
+    CHECK(has_diagnostic(result, "devices[1].unitId", "unitId must be in [0, 255]"));
+    CHECK(has_diagnostic(result, "pollGroups[0].tagNames", "not found on device"));
+    CHECK(has_diagnostic(result, "pollGroups[0].blocks[0].start", "start must be >= 0"));
+    CHECK(has_diagnostic(result, "pollGroups[0].blocks[1].count", "count must be in [1, 125]"));
+    CHECK(has_diagnostic(result, "pollGroups[1].id", "duplicate poll group id"));
+    CHECK(has_diagnostic(result, "pollGroups[1].deviceId", "unknown deviceId"));
+}
+
+TEST_CASE("project loader distinguishes malformed JSON from wrong root shape",
+          "[contract][project][parser]") {
+    const auto malformed = opc::project::load_json_text(R"({"name":)", "truncated.json");
+    REQUIRE_FALSE(malformed.ok);
+    REQUIRE(malformed.diagnostics.size() == 1);
+    CHECK(malformed.diagnostics.front().path == "truncated.json");
+    CHECK(malformed.diagnostics.front().message.find("JSON parse error") != std::string::npos);
+
+    const auto array_root = opc::project::load_json_text("[]", "array.json");
+    REQUIRE_FALSE(array_root.ok);
+    CHECK(has_diagnostic(array_root, "$", "root must be a JSON object"));
+}
+
+TEST_CASE("project loader accepts Modbus boundary values", "[contract][project][validation]") {
+    constexpr std::string_view kJson = R"({
+      "schemaVersion": 1,
+      "name": "boundary",
+      "addressBase": 1,
+      "endpoints": [
+        {"id": "ep", "host": "127.0.0.1", "port": 65535, "transport": "tcp",
+         "connectTimeoutMs": 1, "responseTimeoutMs": 1}
+      ],
+      "devices": [
+        {"id": "low", "endpointId": "ep", "unitId": 0, "tags": [
+          {"name": "First", "area": "holding", "address": 0, "type": "uint16",
+           "byteOrder": "AB", "quantity": 1}
+        ]},
+        {"id": "high", "endpointId": "ep", "unitId": 255, "tags": [
+          {"name": "Last", "area": "holding", "address": 65535, "type": "uint16",
+           "byteOrder": "AB"}
+        ]}
+      ],
+      "pollGroups": [
+        {"id": "g-low", "periodMs": 10, "priority": "fast", "deviceId": "low",
+         "blocks": [{"area": "holding", "start": 0, "count": 125}]},
+        {"id": "g-high", "periodMs": 10, "priority": "fast", "deviceId": "high",
+         "tagNames": ["Last"]}
+      ]
+    })";
+
+    const auto result = opc::project::load_json_text(kJson, "boundary.json");
+    for (const auto& diagnostic : result.diagnostics) {
+        INFO(diagnostic.path << ": " << diagnostic.message);
+    }
+    REQUIRE(result.ok);
+    CHECK(result.project.address_base == 1);
+    CHECK(result.project.endpoints.front().port == 65535);
+    CHECK(result.project.devices.front().unit_id == 0);
+    CHECK(result.project.devices.back().unit_id == 255);
 }

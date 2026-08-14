@@ -13,8 +13,12 @@
 #include "ports/i_log.hpp"
 #include "project/load.hpp"
 
+#include <atomic>
 #include <filesystem>
 #include <memory>
+#include <set>
+#include <thread>
+#include <vector>
 
 using opc::adapters::MemoryMetrics;
 using opc::adapters::RingHistorian;
@@ -183,4 +187,129 @@ TEST_CASE("parse_cli historian and frame-log flags", "[component][app][cli]") {
     CHECK(opts.historian_capacity == 128);
     CHECK(opts.historian_db == "/tmp/h.sqlite");
     CHECK(opts.frame_log_path == "/tmp/frames.log");
+}
+
+TEST_CASE("RingHistorian normalizes zero capacity and honors recent limits",
+          "[component][adapters][historian]") {
+    RingHistorian hist(0);
+    hist.record(1, make_good(1.f, 10));
+    hist.record(2, make_good(2.f, 20));
+
+    CHECK(hist.size() == 1);
+    CHECK(hist.dropped() == 1);
+    CHECK(hist.recent(0).empty());
+
+    const auto recent = hist.recent(99);
+    REQUIRE(recent.size() == 1);
+    CHECK(recent.front().id == 2);
+    CHECK(recent.front().value.server_ts == 20);
+}
+
+TEST_CASE("RingHistorian snapshot remains chronological after concurrent wraparound",
+          "[component][adapters][historian][concurrency]") {
+    constexpr std::size_t kCapacity = 64;
+    constexpr int kThreads = 4;
+    constexpr int kRecordsPerThread = 100;
+    RingHistorian hist(kCapacity);
+    std::atomic<int> sequence{0};
+    std::vector<std::thread> producers;
+
+    for (int thread = 0; thread < kThreads; ++thread) {
+        producers.emplace_back([&, thread] {
+            for (int i = 0; i < kRecordsPerThread; ++i) {
+                const int n = sequence.fetch_add(1);
+                hist.record(static_cast<opc::domain::TagId>(thread),
+                            make_good(static_cast<float>(n), n));
+            }
+        });
+    }
+    for (auto& producer : producers) {
+        producer.join();
+    }
+
+    CHECK(hist.size() == kCapacity);
+    CHECK(hist.dropped() == kThreads * kRecordsPerThread - kCapacity);
+    const auto snapshot = hist.snapshot();
+    REQUIRE(snapshot.size() == kCapacity);
+    std::set<opc::domain::TimestampMs> timestamps;
+    for (const auto& sample : snapshot) {
+        timestamps.insert(sample.value.server_ts);
+    }
+    CHECK(timestamps.size() == kCapacity);
+
+    const auto recent = hist.recent(kCapacity);
+    REQUIRE(recent.size() == snapshot.size());
+    for (std::size_t i = 0; i < recent.size(); ++i) {
+        CHECK(recent[i].id == snapshot[snapshot.size() - 1 - i].id);
+        CHECK(recent[i].value.server_ts == snapshot[snapshot.size() - 1 - i].value.server_ts);
+    }
+}
+
+TEST_CASE("SqliteHistorian round-trips every scalar type and value metadata",
+          "[component][adapters][historian][sqlite]") {
+    const auto db_path =
+        (std::filesystem::temp_directory_path() / "opc_historian_scalar_types.sqlite").string();
+    std::filesystem::remove(db_path);
+
+    const std::vector<opc::domain::ScalarValue> values = {
+        std::monostate{},
+        true,
+        std::uint16_t{65535},
+        std::int16_t{-32768},
+        std::uint32_t{4'000'000'000U},
+        std::int32_t{-2'000'000'000},
+        12.5F,
+        -0.125,
+    };
+
+    {
+        SqliteHistorian hist(db_path, values.size());
+        REQUIRE_FALSE(hist.open_error());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            TagValue value;
+            value.value = values[i];
+            value.quality = Quality::Uncertain;
+            value.reason = opc::domain::QualityReason::Stale;
+            value.source_ts = 100 + static_cast<opc::domain::TimestampMs>(i);
+            value.server_ts = 200 + static_cast<opc::domain::TimestampMs>(i);
+            value.epoch = 10 + i;
+            hist.record(static_cast<opc::domain::TagId>(i + 1), value);
+        }
+        REQUIRE(hist.flush());
+    }
+
+    SqliteHistorian reopened(db_path, values.size());
+    REQUIRE_FALSE(reopened.open_error());
+    auto cold = reopened.load_cold(values.size() + 1);
+    REQUIRE(cold);
+    REQUIRE(cold->size() == values.size());
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        CAPTURE(i);
+        CHECK((*cold)[i].id == i + 1);
+        CHECK((*cold)[i].value.value == values[i]);
+        CHECK((*cold)[i].value.quality == Quality::Uncertain);
+        CHECK((*cold)[i].value.reason == opc::domain::QualityReason::Stale);
+        CHECK((*cold)[i].value.source_ts == 100 + static_cast<opc::domain::TimestampMs>(i));
+        CHECK((*cold)[i].value.server_ts == 200 + static_cast<opc::domain::TimestampMs>(i));
+        CHECK((*cold)[i].value.epoch == 10 + i);
+    }
+    std::filesystem::remove(db_path);
+}
+
+TEST_CASE("SqliteHistorian reports unusable database path without losing hot samples",
+          "[component][adapters][historian][sqlite]") {
+    const auto parent = std::filesystem::temp_directory_path() / "opc_missing_historian_parent";
+    std::filesystem::remove_all(parent);
+    SqliteHistorian hist((parent / "cold.sqlite").string(), 2);
+
+    REQUIRE(hist.open_error());
+    hist.record(9, make_good(9.f, 90));
+    REQUIRE(hist.recent(1).size() == 1);
+
+    auto flush = hist.flush();
+    REQUIRE_FALSE(flush);
+    CHECK(flush.error().code == opc::domain::ErrorCode::Internal);
+    auto cold = hist.load_cold(1);
+    REQUIRE_FALSE(cold);
+    CHECK(cold.error().code == opc::domain::ErrorCode::Internal);
 }
