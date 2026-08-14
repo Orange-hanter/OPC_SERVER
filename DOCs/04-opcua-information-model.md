@@ -111,10 +111,12 @@ Root
 
 - `--ua-cert` / `--ua-key` — готовые DER/PEM;
 - иначе (по умолчанию) самоподписанный application cert на `opcua.namespaceUri`;
-- `--ua-trust PATH` (повторяемый) — trust list;
-- `--ua-strict-certs` — отклонять недоверенные сертификаты (иначе AcceptAll для стендового PKI).
+- `--ua-trust PATH` (повторяемый) — trust list клиентов;
+- `--ua-crl PATH` (повторяемый) — revocation / CRL files;
+- Sign/Encrypt по умолчанию **без** AcceptAll (нужен trust list или `--ua-accept-untrusted` для стенда);
+- `--ua-strict-certs` — явно запретить AcceptAll (побеждает `--ua-accept-untrusted`).
 
-Studio / `opc-monitor` принимают `securityMode` `Sign`/`SignAndEncrypt` и пути `certificate`/`privateKey`; пустые пути → самоподписанный клиентский сертификат. Username/password по-прежнему отклоняются.
+Studio / `opc-monitor` принимают `securityMode` `Sign`/`SignAndEncrypt` и пути `certificate`/`privateKey`; пустые пути → самоподписанный клиентский сертификат. Username/password по-прежнему отклоняются (отдельный эпик промышленного identity).
 
 ## Граница с OPC Classic / DA
 

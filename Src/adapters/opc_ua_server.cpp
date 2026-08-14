@@ -578,10 +578,39 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
             trust_list[i].data = trust_store[i].empty() ? nullptr : trust_store[i].data();
         }
 
+        std::vector<std::vector<std::uint8_t>> revocation_store;
+        std::vector<UA_ByteString> revocation_list;
+        bool revocation_ok = true;
+        for (const auto& path : security_.revocation_list) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) {
+                revocation_ok = false;
+                break;
+            }
+            revocation_store.emplace_back(std::istreambuf_iterator<char>(in),
+                                          std::istreambuf_iterator<char>());
+        }
+        if (!revocation_ok) {
+            UA_Server_delete(server_);
+            server_ = nullptr;
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::InvalidArgument,
+                "cannot read --ua-crl revocation list",
+                "adapters.opcua",
+                false});
+        }
+        revocation_list.resize(revocation_store.size());
+        for (std::size_t i = 0; i < revocation_store.size(); ++i) {
+            revocation_list[i].length = revocation_store[i].size();
+            revocation_list[i].data =
+                revocation_store[i].empty() ? nullptr : revocation_store[i].data();
+        }
+
         status = UA_ServerConfig_setDefaultWithSecurityPolicies(
             config, port, &certificate, &private_key,
             trust_list.empty() ? nullptr : trust_list.data(), trust_list.size(),
-            nullptr, 0, nullptr, 0);
+            nullptr, 0,
+            revocation_list.empty() ? nullptr : revocation_list.data(), revocation_list.size());
         if (status == UA_STATUSCODE_GOOD) {
             if (security_.accept_untrusted) {
                 UA_CertificateVerification_AcceptAll(&config->secureChannelPKI);

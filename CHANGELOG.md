@@ -31,6 +31,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   Studio/`opc-monitor` certificate profile, Modbus UDP adapter, Catch2 load stand
 - Poll/write OpenTelemetry traces (`ITracer`, `modbus.poll` / `modbus.write`) and
   OTLP/HTTP exporters in the `ci` CMake preset (`-DOPC_WITH_OTLP=ON`)
+- Industrial PKI defaults: Sign/Encrypt without AcceptAll unless `--ua-accept-untrusted`;
+  `--ua-crl` revocation list; `--ua-strict-certs` still forces reject
 - Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
 - Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - `opc-map doctor`: register overlaps, unpolled tags, sparse/gappy poll blocks
@@ -53,7 +55,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Roadmap snapshot (2026-08-14): этапы 0–7 чеклиста ядра закрыты (100%);
   живой backlog — `DOCs/tasks.md` (вне ядра: async TCP, industrial PKI)
 - FetchContent/CI: `libssl-dev`, `UA_ENABLE_ENCRYPTION=OPENSSL`; Conan `open62541:encryption=openssl`
-- CLI `--ua-cert` / `--ua-key` / `--ua-trust` / `--ua-strict-certs`; `--traces-export`
+- CLI `--ua-cert` / `--ua-key` / `--ua-trust` / `--ua-crl` / `--ua-strict-certs` /
+  `--ua-accept-untrusted`; `--traces-export`
+- Sign/Encrypt channel PKI fail-closed by default (lab AcceptAll is opt-in)
 
 ### Fixed
 

@@ -40,9 +40,10 @@
 ### Приоритет (после ядра)
 
 1. ~~CI hardening: TSan races, Conan open62541 plugins, Studio Win/macOS OpenSSL/C++23~~ — `cursor/ci-hardening-860d`
-2. Промышленный PKI (trust/reject list без AcceptAll по умолчанию в prod-профиле, username token — по ADR-0009)
+2. Промышленный PKI (fail-closed Sign/Encrypt, `--ua-crl`, `--ua-accept-untrusted`) — `cursor/industrial-pki-860d`
 3. Asio-native async Modbus TCP (ADR-0007; sync POSIX на strand остаётся рабочим)
-4. Живой OTLP-коллектор в CI (сейчас только compile-in exporters)
+4. Username token / industrial CA identity (следующий шаг PKI)
+5. Живой OTLP-коллектор в CI (сейчас только compile-in exporters)
 
 ### Не в ядре (не входят в процент)
 

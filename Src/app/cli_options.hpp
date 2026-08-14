@@ -29,7 +29,9 @@ struct CliOptions {
     std::string ua_cert_path;
     std::string ua_key_path;
     std::vector<std::string> ua_trust_paths;
+    std::vector<std::string> ua_revocation_paths;
     bool ua_strict_certs{false};
+    bool ua_accept_untrusted{false};  // lab escape hatch for Sign/Encrypt
     bool help{false};
     bool version{false};
     std::vector<std::string> errors;

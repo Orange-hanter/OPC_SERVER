@@ -58,7 +58,7 @@ void print_usage(std::ostream& out) {
         << "             [--metrics-export none|ostream|otlp] [--traces-export none|ostream|otlp]\n"
         << "             [--otlp-endpoint URL]\n"
         << "             [--runtime-doctor] [--ua-cert PATH] [--ua-key PATH] [--ua-trust PATH]\n"
-        << "             [--ua-strict-certs]\n"
+        << "             [--ua-crl PATH] [--ua-strict-certs] [--ua-accept-untrusted]\n"
         << "  OPC_SERVER --version\n"
         << "  OPC_SERVER --help\n\n"
         << "Options:\n"
@@ -82,8 +82,10 @@ void print_usage(std::ostream& out) {
         << "                              with --once, exit 1 if any tag is missing or not Good\n"
         << "  --ua-cert <path>            Server application certificate (DER/PEM) for Sign/Encrypt\n"
         << "  --ua-key <path>             Matching private key\n"
-        << "  --ua-trust <path>           Trusted client/server cert (repeatable)\n"
-        << "  --ua-strict-certs           Reject untrusted certificates (default: accept for lab PKI)\n"
+        << "  --ua-trust <path>           Trusted client cert (repeatable; required without AcceptAll)\n"
+        << "  --ua-crl <path>             Certificate revocation list file (repeatable)\n"
+        << "  --ua-strict-certs           Reject untrusted certificates (default for Sign/Encrypt)\n"
+        << "  --ua-accept-untrusted       Lab only: AcceptAll PKI for Sign/Encrypt (overrides trust)\n"
         << "  --version                   Print version and exit\n";
 }
 
@@ -115,6 +117,10 @@ CliOptions parse_cli(int argc, char const* argv[]) {
             opts.ua_strict_certs = true;
             continue;
         }
+        if (arg == "--ua-accept-untrusted") {
+            opts.ua_accept_untrusted = true;
+            continue;
+        }
         if (arg == "--ua-cert") {
             if (i + 1 >= argc) {
                 opts.errors.emplace_back("--ua-cert requires a path");
@@ -137,6 +143,14 @@ CliOptions parse_cli(int argc, char const* argv[]) {
                 break;
             }
             opts.ua_trust_paths.emplace_back(argv[++i]);
+            continue;
+        }
+        if (arg == "--ua-crl") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-crl requires a path");
+                break;
+            }
+            opts.ua_revocation_paths.emplace_back(argv[++i]);
             continue;
         }
         if (arg == "--no-opcua") {
