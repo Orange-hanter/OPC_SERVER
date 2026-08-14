@@ -40,6 +40,12 @@ public:
     /// Execute due poll groups for endpoint (period-aware).
     domain::Result<void> poll_due(std::string_view endpoint_id, domain::TimestampMs now);
 
+    /// Non-blocking poll: uses transport async_* APIs. `done` runs on the completion
+    /// executor (endpoint strand) when wired, otherwise inline after the last op.
+    void poll_due_async(std::string_view endpoint_id,
+                        domain::TimestampMs now,
+                        ports::ModbusCompletion<void> done);
+
     domain::Result<void> enqueue_write(domain::TagId tag_id, domain::ScalarValue value);
 
     /// Drain write queue for endpoint (call on endpoint strand before/with poll).
@@ -58,6 +64,12 @@ private:
     domain::Result<void> poll_tag(const TagBinding& binding,
                                   ports::IModbusTransport& transport,
                                   domain::TimestampMs now);
+
+    void poll_tag_async(TagBinding binding,
+                        ports::IModbusTransport& transport,
+                        domain::TimestampMs now,
+                        ports::ModbusCompletion<void> done);
+
     [[nodiscard]] std::unique_ptr<ports::ISpan> start_span(std::string_view name) const;
 
     Dependencies deps_;

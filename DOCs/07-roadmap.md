@@ -214,7 +214,7 @@ SignAndEncrypt (fail-closed), сертификатный профиль Studio/o
 
 | Сейчас | Следующая цель |
 |--------|----------------|
-| Asio `io_context` + strand-per-endpoint; **Asio-native TCP** (private ioc + async I/O, sync facade) | Optional completion-token transport API |
+| Asio `io_context` + strand-per-endpoint; **Asio-native TCP** + **async `IModbusTransport` completion tokens** | — |
 | `reconnectDelayMs` backoff на strand | — |
 | `opc-map` validate (JSON Schema + semantic) / doctor / migrate / import-csv / gen-nodeset | — |
 | Studio + opc-monitor, cert profile Sign/SignAndEncrypt; fail-closed PKI; username token | industrial CA / X.509 user tokens |

@@ -4,6 +4,7 @@
 #include "core/runtime_index.hpp"
 #include "core/tag_store.hpp"
 #include "domain/types.hpp"
+#include "ports/i_executor.hpp"
 #include "ports/i_clock.hpp"
 #include "ports/i_frame_log.hpp"
 #include "ports/i_historian.hpp"
@@ -96,6 +97,8 @@ private:
     ports::ITracer* tracer_{nullptr};
     TransportFactory transport_factory_;
     std::unordered_map<std::string, std::unique_ptr<ports::IModbusTransport>> transports_;
+    std::unordered_map<std::string, std::shared_ptr<ports::IExecutor>> transport_executors_;
+    std::unordered_map<std::string, bool> poll_inflight_;
     std::unique_ptr<ports::IOpcUaFacade> opcua_;
     std::unique_ptr<adapters::AsioReactor> reactor_;
     std::unordered_map<std::string, domain::TimestampMs> next_reconnect_ms_;

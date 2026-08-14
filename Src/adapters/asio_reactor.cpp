@@ -71,6 +71,21 @@ private:
 
 using WorkGuard = asio::executor_work_guard<IoContext::executor_type>;
 
+struct StrandExecutor final : ports::IExecutor {
+    StrandExecutor(Strand* strand, std::atomic<bool>* stopping)
+        : strand(strand), stopping(stopping) {}
+
+    void post(std::move_only_function<void()> work) override {
+        if (!work || stopping == nullptr || stopping->load()) {
+            return;
+        }
+        asio::post(*strand, [w = std::move(work)]() mutable { w(); });
+    }
+
+    Strand* strand{nullptr};
+    std::atomic<bool>* stopping{nullptr};
+};
+
 struct AsioReactor::Impl {
     explicit Impl(std::size_t worker_threads)
         : worker_threads(worker_threads < 1 ? 1 : worker_threads),
@@ -153,6 +168,11 @@ void AsioReactor::post(std::string_view endpoint_id, std::function<void()> work)
     }
     auto& strand = impl_->strand_for(endpoint_id);
     asio::post(strand, std::move(work));
+}
+
+std::shared_ptr<ports::IExecutor> AsioReactor::executor_for(std::string_view endpoint_id) {
+    auto& strand = impl_->strand_for(endpoint_id);
+    return std::make_shared<StrandExecutor>(&strand, &impl_->stopping);
 }
 
 void AsioReactor::repeat_on_strand(std::string_view endpoint_id,

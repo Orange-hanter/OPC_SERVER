@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ports/i_executor.hpp"
+
 #include <chrono>
 #include <cstddef>
 #include <functional>
@@ -21,6 +23,9 @@ public:
 
     /// Serialize `work` on the endpoint strand.
     void post(std::string_view endpoint_id, std::function<void()> work);
+
+    /// IExecutor that posts onto the endpoint strand (for Modbus completion hopping).
+    [[nodiscard]] std::shared_ptr<ports::IExecutor> executor_for(std::string_view endpoint_id);
 
     /// First tick immediately, then again after each completion + `period`.
     void repeat_on_strand(std::string_view endpoint_id,

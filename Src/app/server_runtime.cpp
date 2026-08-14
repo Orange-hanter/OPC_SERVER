@@ -197,6 +197,12 @@ void ServerRuntime::tick_endpoint(const std::string& endpoint_id) {
     if (t_it == transports_.end() || t_it->second == nullptr) {
         return;
     }
+    if (poll_inflight_[endpoint_id]) {
+        if (metrics_ != nullptr) {
+            metrics_->counter_add("modbus_poll_overruns");
+        }
+        return;
+    }
     auto& transport = *t_it->second;
     const auto now = clock_->now_ms();
     const auto* ep = index_.endpoint(endpoint_id);
@@ -209,29 +215,44 @@ void ServerRuntime::tick_endpoint(const std::string& endpoint_id) {
         }
     }
 
-    auto r = dispatcher_->poll_due(endpoint_id, now);
-    if (!transport.is_connected()) {
-        dispatcher_->mark_endpoint_bad(endpoint_id, domain::QualityReason::NoCommunication, now);
-        next_reconnect_ms_[endpoint_id] = now + delay_ms;
-    } else {
-        next_reconnect_ms_.erase(endpoint_id);
-    }
+    poll_inflight_[endpoint_id] = true;
+    dispatcher_->poll_due_async(
+        endpoint_id, now,
+        [this, endpoint_id, delay_ms](domain::Result<void> r) {
+            poll_inflight_[endpoint_id] = false;
+            auto t_it = transports_.find(endpoint_id);
+            if (t_it == transports_.end() || t_it->second == nullptr) {
+                return;
+            }
+            auto& transport = *t_it->second;
+            const auto now = clock_->now_ms();
 
-    if (!r) {
-        log_msg(log_, ports::LogLevel::Warn,
-                "poll error on " + endpoint_id + ": " + r.error().message);
-        if (r.error().code == domain::ErrorCode::Connection) {
-            transport.close();
-            dispatcher_->mark_endpoint_bad(endpoint_id, domain::QualityReason::NoCommunication, now);
-            next_reconnect_ms_[endpoint_id] = now + delay_ms;
-        }
-    }
+            if (!transport.is_connected()) {
+                dispatcher_->mark_endpoint_bad(endpoint_id, domain::QualityReason::NoCommunication,
+                                               now);
+                next_reconnect_ms_[endpoint_id] = now + delay_ms;
+            } else {
+                next_reconnect_ms_.erase(endpoint_id);
+            }
 
-    if (historian_ != nullptr) {
-        if (auto flushed = historian_->flush(); !flushed) {
-            log_msg(log_, ports::LogLevel::Warn, "historian flush: " + flushed.error().message);
-        }
-    }
+            if (!r) {
+                log_msg(log_, ports::LogLevel::Warn,
+                        "poll error on " + endpoint_id + ": " + r.error().message);
+                if (r.error().code == domain::ErrorCode::Connection) {
+                    transport.close();
+                    dispatcher_->mark_endpoint_bad(
+                        endpoint_id, domain::QualityReason::NoCommunication, now);
+                    next_reconnect_ms_[endpoint_id] = now + delay_ms;
+                }
+            }
+
+            if (historian_ != nullptr) {
+                if (auto flushed = historian_->flush(); !flushed) {
+                    log_msg(log_, ports::LogLevel::Warn,
+                            "historian flush: " + flushed.error().message);
+                }
+            }
+        });
 }
 
 domain::Result<void> ServerRuntime::start_reactor(ReactorOptions options) {
@@ -247,6 +268,11 @@ domain::Result<void> ServerRuntime::start_reactor(ReactorOptions options) {
     reactor_ = std::make_unique<adapters::AsioReactor>(choose_worker_count());
     for (const auto& endpoint : project_->endpoints) {
         reactor_->ensure_strand(endpoint.id);
+        auto executor = reactor_->executor_for(endpoint.id);
+        transport_executors_[endpoint.id] = executor;
+        if (auto t = transports_.find(endpoint.id); t != transports_.end() && t->second) {
+            t->second->set_completion_executor(executor.get());
+        }
     }
     reactor_->start();
 
@@ -317,7 +343,14 @@ void ServerRuntime::stop() {
         reactor_->stop();
         reactor_.reset();
     }
+    poll_inflight_.clear();
     next_reconnect_ms_.clear();
+    for (auto& [id, transport] : transports_) {
+        if (transport) {
+            transport->set_completion_executor(nullptr);
+        }
+    }
+    transport_executors_.clear();
     if (historian_sub_) {
         tag_store_.unsubscribe(*historian_sub_);
         historian_sub_.reset();
