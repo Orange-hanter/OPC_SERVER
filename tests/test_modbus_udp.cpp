@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <mutex>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <thread>
@@ -38,18 +39,24 @@ public:
     ~UdpHoldingSlave() {
         run_ = false;
         if (fd_ >= 0) {
+            // Unblock recvfrom without racing close against the worker thread.
             ::shutdown(fd_, SHUT_RDWR);
-            ::close(fd_);
-            fd_ = -1;
         }
         if (thread_.joinable()) {
             thread_.join();
+        }
+        if (fd_ >= 0) {
+            ::close(fd_);
+            fd_ = -1;
         }
     }
 
     [[nodiscard]] std::uint16_t port() const { return port_; }
 
-    void set_holding(std::uint16_t address, std::uint16_t value) { holding_[address] = value; }
+    void set_holding(std::uint16_t address, std::uint16_t value) {
+        std::lock_guard lock(mutex_);
+        holding_[address] = value;
+    }
 
 private:
     void loop() {
@@ -72,10 +79,13 @@ private:
             std::vector<std::uint8_t> pdu;
             pdu.push_back(0x03);
             pdu.push_back(static_cast<std::uint8_t>(qty * 2));
-            for (std::uint16_t i = 0; i < qty; ++i) {
-                const auto v = holding_[static_cast<std::uint16_t>(addr + i)];
-                pdu.push_back(static_cast<std::uint8_t>((v >> 8) & 0xFF));
-                pdu.push_back(static_cast<std::uint8_t>(v & 0xFF));
+            {
+                std::lock_guard lock(mutex_);
+                for (std::uint16_t i = 0; i < qty; ++i) {
+                    const auto v = holding_[static_cast<std::uint16_t>(addr + i)];
+                    pdu.push_back(static_cast<std::uint8_t>((v >> 8) & 0xFF));
+                    pdu.push_back(static_cast<std::uint8_t>(v & 0xFF));
+                }
             }
             const auto rsp = opc::adapters::pack_mbap(unpacked->transaction_id, unpacked->unit, pdu);
             ::sendto(fd_, rsp.data(), rsp.size(), 0, reinterpret_cast<sockaddr*>(&from), from_len);
@@ -86,6 +96,7 @@ private:
     std::uint16_t port_{0};
     std::atomic<bool> run_{false};
     std::thread thread_;
+    mutable std::mutex mutex_;
     std::unordered_map<std::uint16_t, std::uint16_t> holding_;
 };
 

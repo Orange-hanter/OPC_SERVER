@@ -25,15 +25,9 @@ class OpcServerConan(ConanFile):
         "DOCs/schemas/*",
         "LICENSE",
     )
-    default_options = {
-        "open62541/*:shared": False,
-        "open62541/*:encryption": "openssl",
-    }
-
-    def requirements(self):
-        self.requires("open62541/1.5.0")
 
     def build_requirements(self):
+        # open62541 comes from FetchContent (OPENSSL + plugin headers).
         self.test_requires("catch2/3.15.1")
 
     def layout(self):

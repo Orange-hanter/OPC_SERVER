@@ -3,7 +3,7 @@
 Актуальный backlog ядра. Порядок работ и критерии готовности: [07-roadmap.md](07-roadmap.md).  
 Исторический набросок 2019 (опрос IoT/Modbus) закрыт этапами 1–2; текст сохранён в конце файла.
 
-**Снимок:** 2026-08-14, линия `cursor/otlp-traces-860d` поверх A→D. В `master` пока Studio (PR #8).
+**Снимок:** 2026-08-14, линия `cursor/ci-hardening-860d` поверх OTLP traces / A→D. В `master` пока Studio (PR #8).
 
 ## Процент выполнения
 
@@ -36,6 +36,13 @@
 - [x] Хвост этапа 5 — OTLP default-on в CI / traces на poll-write
 
 ## Дальше (открыто)
+
+### Приоритет (после ядра)
+
+1. ~~CI hardening: TSan races, Conan open62541 plugins, Studio Win/macOS OpenSSL/C++23~~ — `cursor/ci-hardening-860d`
+2. Промышленный PKI (trust/reject list без AcceptAll по умолчанию в prod-профиле, username token — по ADR-0009)
+3. Asio-native async Modbus TCP (ADR-0007; sync POSIX на strand остаётся рабочим)
+4. Живой OTLP-коллектор в CI (сейчас только compile-in exporters)
 
 ### Не в ядре (не входят в процент)
 

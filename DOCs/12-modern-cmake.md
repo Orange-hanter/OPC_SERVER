@@ -85,14 +85,15 @@ cmake --preset dev \
 ## Два способа получать зависимости
 
 `AUTO` сначала ищет config packages через `find_package()`. Если их нет,
-open62541 и Catch2 загружаются через `FetchContent`. Полностью автономный режим:
+Catch2 загружается через `FetchContent`. open62541 **всегда** FetchContent
+(OpenSSL encryption + `plugin/pki_default.h`). Полностью автономный режим:
 
 ```bash
 cmake --preset dev -DOPC_DEPENDENCY_PROVIDER=FETCHCONTENT
 ```
 
-`CONAN` запрещает fallback, поэтому ошибка интеграции обнаруживается сразу.
-Нужен Conan 2:
+`CONAN` требует Catch2 из Conan (ошибка интеграции обнаруживается сразу);
+open62541 по-прежнему FetchContent. Нужен Conan 2:
 
 ```bash
 pipx install conan
@@ -102,8 +103,8 @@ conan build . -s build_type=Debug -s compiler.cppstd=23 --build=missing
 ```
 
 `CMakeToolchain` передаёт CMake сведения о compiler/runtime, а `CMakeDeps`
-создаёт config packages для `find_package(open62541)` и
-`find_package(Catch2)`. Recipe также умеет собрать устанавливаемый пакет:
+создаёт config package для `find_package(Catch2)`. Recipe также умеет собрать
+устанавливаемый пакет:
 
 ```bash
 conan create . -s build_type=Release -s compiler.cppstd=23 --build=missing

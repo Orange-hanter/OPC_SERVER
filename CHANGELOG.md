@@ -57,6 +57,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- TSan: protect `Dispatcher` transport/`last_poll_ms_` maps across endpoint strands;
+  cancel Asio repeat timers on their strand; synchronize UDP slave test map
+- Conan CI: FetchContent open62541 (plugin headers); Catch2 remains Conan
+- Studio package CI: OpenSSL on Windows; LLVM + OpenSSL on macOS for C++23 sidecars
 - Write batch tail no longer dropped when a Modbus write fails mid-flush
 - Bad/WriteRejected publishes keep the previous engineering ScalarValue
 - Removed adapters→core coupling via `RuntimeIndex` in the OPC UA adapter

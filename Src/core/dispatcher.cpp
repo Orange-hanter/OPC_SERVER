@@ -65,6 +65,7 @@ std::unique_ptr<ports::ISpan> Dispatcher::start_span(std::string_view name) cons
 }
 
 void Dispatcher::bind_transport(std::string endpoint_id, ports::IModbusTransport* transport) {
+    std::lock_guard lock(state_mutex_);
     transports_[std::move(endpoint_id)] = transport;
 }
 
@@ -219,16 +220,20 @@ domain::Result<void> Dispatcher::poll_due(std::string_view endpoint_id, domain::
     if (span) {
         span->set_attribute("endpoint_id", endpoint_id);
     }
-    auto it = transports_.find(std::string(endpoint_id));
-    if (it == transports_.end() || it->second == nullptr) {
-        if (span) {
-            span->set_error("transport not bound");
+    ports::IModbusTransport* transport = nullptr;
+    {
+        std::lock_guard lock(state_mutex_);
+        auto it = transports_.find(std::string(endpoint_id));
+        if (it == transports_.end() || it->second == nullptr) {
+            if (span) {
+                span->set_error("transport not bound");
+            }
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::NotFound, "transport not bound", "core.dispatcher", false});
         }
-        return std::unexpected(domain::Error{
-            domain::ErrorCode::NotFound, "transport not bound", "core.dispatcher", false});
+        transport = it->second;
     }
-    auto& transport = *it->second;
-    if (!transport.is_connected()) {
+    if (!transport->is_connected()) {
         const auto* ep = deps_.index.endpoint(endpoint_id);
         if (ep == nullptr) {
             if (span) {
@@ -237,7 +242,7 @@ domain::Result<void> Dispatcher::poll_due(std::string_view endpoint_id, domain::
             return std::unexpected(domain::Error{
                 domain::ErrorCode::NotFound, "endpoint missing", "core.dispatcher", false});
         }
-        auto conn = transport.connect({ep->host, ep->port});
+        auto conn = transport->connect({ep->host, ep->port});
         if (!conn) {
             mark_endpoint_bad(endpoint_id, domain::QualityReason::NoCommunication, now);
             if (span) {
@@ -258,12 +263,21 @@ domain::Result<void> Dispatcher::poll_due(std::string_view endpoint_id, domain::
     const auto groups = deps_.index.groups_for_endpoint(endpoint_id);
     for (const auto* group : groups) {
         const std::string key = std::string(endpoint_id) + "|" + group->id;
-        const auto last = last_poll_ms_.contains(key) ? last_poll_ms_[key] : domain::TimestampMs{0};
+        domain::TimestampMs last{0};
+        {
+            std::lock_guard lock(state_mutex_);
+            if (last_poll_ms_.contains(key)) {
+                last = last_poll_ms_[key];
+            }
+        }
         if (last != 0 && (now - last) < group->period_ms) {
             continue;
         }
-        auto r = poll_group(*group, transport, now);
-        last_poll_ms_[key] = now;
+        auto r = poll_group(*group, *transport, now);
+        {
+            std::lock_guard lock(state_mutex_);
+            last_poll_ms_[key] = now;
+        }
         if (!r) {
             if (deps_.metrics != nullptr) {
                 deps_.metrics->counter_add("modbus_poll_overruns");
@@ -324,8 +338,15 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
         span->set_attribute("endpoint_id", endpoint_id);
         span->set_attribute("write_count", static_cast<std::int64_t>(batch.size()));
     }
-    auto t_it = transports_.find(std::string(endpoint_id));
-    if (t_it == transports_.end() || t_it->second == nullptr) {
+    ports::IModbusTransport* transport = nullptr;
+    {
+        std::lock_guard lock(state_mutex_);
+        auto t_it = transports_.find(std::string(endpoint_id));
+        if (t_it != transports_.end()) {
+            transport = t_it->second;
+        }
+    }
+    if (transport == nullptr) {
         std::lock_guard lock(write_mutex_);
         auto& queue = write_queues_[std::string(endpoint_id)];
         queue.insert(queue.begin(), std::make_move_iterator(batch.begin()),
@@ -336,7 +357,6 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
         return std::unexpected(domain::Error{
             domain::ErrorCode::NotFound, "transport not bound", "core.dispatcher", false});
     }
-    auto& transport = *t_it->second;
     const auto now = deps_.clock != nullptr ? deps_.clock->now_ms() : domain::TimestampMs{0};
 
     auto requeue_from = [&](std::size_t index) {
@@ -399,14 +419,14 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
             }
             consumed = j - i;
             if (bits.size() == 1) {
-                wr = transport.write_single_coil(binding->unit_id, addr, bits[0] != 0);
+                wr = transport->write_single_coil(binding->unit_id, addr, bits[0] != 0);
             } else {
-                wr = transport.write_multiple_coils(binding->unit_id, addr, bits);
+                wr = transport->write_multiple_coils(binding->unit_id, addr, bits);
             }
         } else if (encoded->size() == 1) {
-            wr = transport.write_single_register(binding->unit_id, addr, (*encoded)[0]);
+            wr = transport->write_single_register(binding->unit_id, addr, (*encoded)[0]);
         } else {
-            wr = transport.write_multiple_registers(binding->unit_id, addr, *encoded);
+            wr = transport->write_multiple_registers(binding->unit_id, addr, *encoded);
         }
 
         if (!wr) {

@@ -27,16 +27,25 @@ struct RepeatOp : std::enable_shared_from_this<RepeatOp> {
              std::function<void()> work,
              std::atomic<bool>* stopping)
         : timer(ctx),
-          strand(strand),
+          owned_strand(strand == nullptr
+                           ? std::make_unique<Strand>(asio::make_strand(ctx.get_executor()))
+                           : nullptr),
+          strand(strand != nullptr ? strand : owned_strand.get()),
           period(period),
           work(std::move(work)),
           stopping(stopping) {}
 
     void start() { arm(std::chrono::milliseconds{0}); }
 
-    void cancel() { timer.cancel(); }
+    void cancel() {
+        // Timer cancel must run on the same strand as arm()/async_wait (TSan / Asio).
+        asio::dispatch(*strand, [self = shared_from_this()] {
+            self->timer.cancel();
+        });
+    }
 
     asio::steady_timer timer;
+    std::unique_ptr<Strand> owned_strand;
     Strand* strand{nullptr};
     std::chrono::milliseconds period{0};
     std::function<void()> work;
@@ -54,11 +63,7 @@ private:
                 self->arm(self->period);
             }
         };
-        if (strand != nullptr) {
-            timer.async_wait(asio::bind_executor(*strand, std::move(handler)));
-        } else {
-            timer.async_wait(std::move(handler));
-        }
+        timer.async_wait(asio::bind_executor(*strand, std::move(handler)));
     }
 };
 
@@ -99,19 +104,24 @@ struct AsioReactor::Impl {
         if (signals) {
             signals->cancel();
         }
+        std::vector<std::shared_ptr<RepeatOp>> snapshot;
         {
             std::lock_guard lock(mutex);
-            for (auto& op : repeats) {
-                if (op) {
-                    op->cancel();
-                }
+            snapshot = repeats;
+        }
+        for (auto& op : snapshot) {
+            if (op) {
+                op->cancel();
             }
-            repeats.clear();
         }
         if (guard) {
             guard->reset();
         }
         ctx.stop();
+        {
+            std::lock_guard lock(mutex);
+            repeats.clear();
+        }
     }
 
     std::size_t worker_threads{2};

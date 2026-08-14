@@ -180,23 +180,11 @@ function(opc_setup_dependencies)
       "Choose AUTO, CONAN, or FETCHCONTENT.")
   endif()
 
-  if(NOT _provider STREQUAL "FETCHCONTENT")
-    if(_provider STREQUAL "CONAN")
-      find_package(open62541 CONFIG REQUIRED)
-    else()
-      find_package(open62541 CONFIG QUIET)
-    endif()
-    _opc_find_open62541_target(_open62541_target)
-  endif()
-
-  if(NOT _open62541_target)
-    if(_provider STREQUAL "CONAN")
-      message(FATAL_ERROR
-        "Conan's open62541 package did not define a supported CMake target.")
-    endif()
-    _opc_fetch_open62541()
-    _opc_find_open62541_target(_open62541_target)
-  endif()
+  # open62541 is always FetchContent: Conan Center packages (1.5.x) omit
+  # plugin headers such as pki_default.h required for SignAndEncrypt / AcceptAll.
+  # Catch2 still comes from Conan when OPC_DEPENDENCY_PROVIDER=CONAN.
+  _opc_fetch_open62541()
+  _opc_find_open62541_target(_open62541_target)
 
   if(BUILD_TESTING)
     if(NOT _provider STREQUAL "FETCHCONTENT")
