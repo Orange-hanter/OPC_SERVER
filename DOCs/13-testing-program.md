@@ -27,7 +27,7 @@ CI/nightly/lab — в [11-ci-and-releases.md](11-ci-and-releases.md).
 
 | Уровень | Где живёт | Когда гоняется | Что доказывает |
 |---------|-----------|----------------|----------------|
-| Static | clang-format, clang-tidy, `scripts/layer-lint.py` | PR | Слои hexagon, стиль |
+| Static | Clang `-Werror`, clang-tidy, cppcheck, `scripts/layer-lint.py` | PR | Слои hexagon, UB-паттерны, ошибки API, portability |
 | Unit | `tests/unit/` | PR | Codec, типы, Quality, validate без I/O |
 | Component | `tests/component/` | PR | Dispatcher/TagStore + `FakeModbusTransport` |
 | Contract | `tests/contract/` | PR | demo-plant, schema, CLI, паритет Ajv |
@@ -37,7 +37,8 @@ CI/nightly/lab — в [11-ci-and-releases.md](11-ci-and-releases.md).
 | Native Studio | Playwright skip / sidecar | opt-in | Tauri + `opc-monitor` |
 | Conformance | OPC Foundation CTT | lab / release | Профиль UA, не блокер merge |
 | Acceptance | FAT/SAT чеклисты | стенд / объект | Приёмка ICS |
-| Load / soak | `opc_bench`, `OPC_SOAK=1` | nightly / этап 7 | Ёмкость и утечки |
+| Dynamic analysis | ASan/UBSan (PR), TSan/Valgrind Memcheck (nightly) | PR/nightly | OOB/UAF/UB, data races, leaks/use-after-free |
+| Load / soak | `opc_bench`, `OPC_SOAK=1` | nightly / этап 7 | Ёмкость и деградация |
 | Fuzz | `fuzz/` | Clang nightly | Парсеры JSON и MBAP |
 | Security | SAST, IPC limits, certs | PR advisory + lab | IEC 62443-4-1 практики |
 
@@ -123,6 +124,9 @@ Studio (ADR-0016): редактор и read-only monitor не имеют пра�
 - Catch2 `GENERATOR` для property roundtrip Translator
 - C++ `LoopbackModbusSlave` в `tests/support/` (без Python в default CI)
 - `scripts/layer-lint.py`
+- Clang warnings-as-errors + clang-tidy (`scripts/run-static-analysis.sh`)
+- cppcheck warning/performance/portability (`scripts/run-static-analysis.sh`)
+- Valgrind Memcheck (`scripts/run-valgrind.sh`, definite/indirect leaks = failure)
 - llvm-cov / gcov (`OPC_ENABLE_COVERAGE`)
 - CMake preset `tsan`
 - libFuzzer-таргет `project_load_fuzzer` (`OPC_ENABLE_FUZZERS`, Clang)
@@ -166,8 +170,8 @@ DOCs/testing/
 
 | Лента | Содержание | Блокер merge |
 |-------|------------|--------------|
-| Default CI (PR) | GCC `ci` + `ctest`; ASan/UBSan; layer-lint; Studio lint/tsc/vitest/playwright mock | Да |
-| Nightly / `workflow_dispatch` | TSan; `OPC_E2E=1`; coverage отчёт; fuzz (Clang); soak короткий | Нет, кроме регрессии TSan перед Asio |
+| Default CI (PR) | GCC `ci` + `ctest`; ASan/UBSan; Clang `-Werror` + clang-tidy + cppcheck; layer-lint; Studio lint/tsc/vitest/playwright mock | Да |
+| Nightly / `workflow_dispatch` | TSan; Valgrind Memcheck; `OPC_E2E=1`; coverage отчёт; fuzz (Clang); soak короткий | Нет, кроме регрессии TSan перед Asio |
 | Lab / release | OPC UA CTT, FAT, HIL PLC, SignAndEncrypt, native Tauri, коммерческий SCADA | Релизный gate, не PR |
 
 Короткий Modbus TCP loopback **входит в default CI**: это миллисекунды на 127.0.0.1

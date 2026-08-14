@@ -13,6 +13,25 @@ permissions:
   contents: read
 
 jobs:
+  valgrind:
+    name: Valgrind Memcheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build cmake g++ valgrind libsqlite3-dev
+      - name: Configure
+        run: cmake --preset valgrind -DCMAKE_CXX_COMPILER=g++
+      - name: Build
+        run: cmake --build --preset valgrind
+      - name: Memcheck
+        run: ./scripts/run-valgrind.sh
+
   tsan:
     name: TSan
     runs-on: ubuntu-24.04

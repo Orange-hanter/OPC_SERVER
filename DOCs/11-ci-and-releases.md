@@ -18,6 +18,8 @@
 
 - **Ubuntu 24.04 + g++** (primary): CMake preset `ci`, `scripts/layer-lint.py`, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
 - **ASan/UBSan**: preset `asan` + `ctest --preset asan` (блокер PR).
+- **Static analysis**: Clang `-Werror`, clang-tidy (analyzer/bugprone/performance)
+  и cppcheck (warning/performance/portability), preset `static-analysis`.
 - **Conan 2**: optional dependency provider job (`OPC_DEPENDENCY_PROVIDER=CONAN`).
 - Clang is supported locally with `-DCMAKE_CXX_FLAGS=-stdlib=libstdc++` when libstdc++ provides `std::expected`; not required in CI until runners ship a complete C++23 STL for Clang.
 - **Studio quality**: npm lockfile install, lint, TypeScript check, Vitest,
@@ -32,6 +34,8 @@
 Не блокер merge (кроме оговорённого TSan перед Asio):
 
 - TSan preset + `[core]` tests
+- Valgrind Memcheck: все автоматические Catch2-тесты кроме opt-in E2E/soak;
+  definite/indirect leaks и memory errors ломают job
 - `OPC_E2E=1` lab MVP scenario
 - Coverage отчёт `domain`/`core`/`project` (порог 70% — warning, затем gate)
 - Clang fuzzer smoke (`OPC_ENABLE_FUZZERS`), если toolchain доступен
@@ -124,6 +128,9 @@ Repository admin should confirm:
 cmake --workflow --preset dev
 python3 scripts/layer-lint.py
 cmake --workflow --preset asan
+./scripts/run-static-analysis.sh
+cmake --preset valgrind && cmake --build --preset valgrind
+./scripts/run-valgrind.sh
 ./build/dev/tools/opc-map/opc-map validate DOCs/examples/demo-plant.modbusproj.json
 OPC_E2E=1 ./build/dev/tests/opc_tests "[e2e]"
 ```

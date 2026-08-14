@@ -15,7 +15,7 @@ Checks: >
   -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -cppcoreguidelines-owning-memory
-WarningsAsErrors: ''
+WarningsAsErrors: 'clang-analyzer-*,bugprone-*,performance-*'
 HeaderFilterRegex: 'Src/.*'
 FormatStyle: file
 CheckOptions:

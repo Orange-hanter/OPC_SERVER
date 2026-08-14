@@ -18,6 +18,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Dispatcher coverage of Input/Discrete/coil write, Permission, DecodingError, WriteRejected,
   reconnect and poll-by-blocks; RuntimeIndex unit tests; Modbus FC02/FC04, packed coils, exception 03
 - `validate` rejects duplicate tag names across devices (`RuntimeIndex` is globally name-keyed)
+- Deep C++ gates: Clang warnings-as-errors, clang-tidy, cppcheck in PR CI and
+  Valgrind Memcheck nightly; deterministic scripts/presets for local runs
+- Modbus TCP rejects mismatched MBAP transaction/protocol/unit/function,
+  malformed byte counts, invalid write echoes and out-of-spec quantities
+- Translator rejects non-finite and overflowing integer/float conversions
+  instead of silently wrapping engineering values
 - Tauri 2 Engineering Studio for Windows, Linux and macOS with local project
   editing, JSON Schema/`opc-map` validation, RU/EN themes and read-only remote
   OPC UA monitoring (ADR-0016)

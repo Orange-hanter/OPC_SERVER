@@ -18,6 +18,17 @@ python3 scripts/layer-lint.py
 
 Другие профили и Conan 2: [DOCs/12-modern-cmake.md](DOCs/12-modern-cmake.md).
 
+Глубокие C++ проверки:
+
+```bash
+cmake --workflow --preset asan       # AddressSanitizer + UndefinedBehaviorSanitizer
+./scripts/run-static-analysis.sh     # Clang -Werror + clang-tidy + cppcheck
+cmake --preset valgrind
+cmake --build --preset valgrind
+./scripts/run-valgrind.sh            # Memcheck: invalid access, UAF, leaks, fd leaks
+cmake --workflow --preset tsan       # data races; nightly/toolchain-dependent
+```
+
 Форматирование:
 
 ```bash

@@ -89,6 +89,28 @@ jobs:
       - name: Test
         run: ctest --preset asan --timeout 180
 
+  static-analysis:
+    name: Clang warnings, clang-tidy & cppcheck
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install analysis toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build cmake clang clang-tidy cppcheck libsqlite3-dev
+
+      - name: Analyze and build
+        run: ./scripts/run-static-analysis.sh
+
+      - name: Test Clang build
+        run: ctest --test-dir build/static-analysis --output-on-failure --timeout 180
+
   conan:
     name: Conan 2 dependency provider
     runs-on: ubuntu-24.04

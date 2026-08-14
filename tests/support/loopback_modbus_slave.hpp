@@ -87,6 +87,12 @@ public:
 
     void fail_illegal_address_once() { illegal_address_once_ = true; }
     void fail_illegal_value_once() { illegal_value_once_ = true; }
+    void corrupt_transaction_once() { corrupt_transaction_once_ = true; }
+    void corrupt_protocol_once() { corrupt_protocol_once_ = true; }
+    void corrupt_unit_once() { corrupt_unit_once_ = true; }
+    void corrupt_function_once() { corrupt_function_once_ = true; }
+    void corrupt_byte_count_once() { corrupt_byte_count_once_ = true; }
+    void corrupt_write_echo_once() { corrupt_write_echo_once_ = true; }
 
     void stop() {
         if (!running_.exchange(false)) {
@@ -166,6 +172,24 @@ private:
             append_u16(resp, static_cast<std::uint16_t>(1 + pdu.size()));
             resp.push_back(unit);
             resp.insert(resp.end(), pdu.begin(), pdu.end());
+            if (corrupt_transaction_once_.exchange(false)) {
+                resp[1] = static_cast<std::uint8_t>(resp[1] ^ 0x01u);
+            }
+            if (corrupt_protocol_once_.exchange(false)) {
+                resp[3] = 0x01;
+            }
+            if (corrupt_unit_once_.exchange(false)) {
+                resp[6] = static_cast<std::uint8_t>(resp[6] + 1u);
+            }
+            if (corrupt_function_once_.exchange(false)) {
+                resp[7] = static_cast<std::uint8_t>(resp[7] ^ 0x01u);
+            }
+            if (corrupt_byte_count_once_.exchange(false) && resp.size() > 8) {
+                resp[8] = static_cast<std::uint8_t>(resp[8] + 1u);
+            }
+            if (corrupt_write_echo_once_.exchange(false) && resp.size() > 9) {
+                resp[9] = static_cast<std::uint8_t>(resp[9] ^ 0x01u);
+            }
             if (!write_full(fd, resp.data(), resp.size())) {
                 return;
             }
@@ -281,6 +305,12 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> illegal_address_once_{false};
     std::atomic<bool> illegal_value_once_{false};
+    std::atomic<bool> corrupt_transaction_once_{false};
+    std::atomic<bool> corrupt_protocol_once_{false};
+    std::atomic<bool> corrupt_unit_once_{false};
+    std::atomic<bool> corrupt_function_once_{false};
+    std::atomic<bool> corrupt_byte_count_once_{false};
+    std::atomic<bool> corrupt_write_echo_once_{false};
     std::thread thread_;
     mutable std::mutex mutex_;
     std::unordered_map<Key, std::uint16_t> holding_;

@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "adapters/memory_metrics.hpp"
 #include "adapters/system_clock.hpp"
 #include "adapters/testsupport/fake_modbus_transport.hpp"
 #include "core/dispatcher.hpp"
@@ -10,6 +11,9 @@
 #include "ports/i_metrics.hpp"
 #include "project/load.hpp"
 
+#include <atomic>
+#include <thread>
+#include <vector>
 using opc::adapters::testsupport::FakeModbusTransport;
 using opc::core::Dispatcher;
 using opc::core::RuntimeIndex;
@@ -140,4 +144,53 @@ TEST_CASE("Dispatcher Bad write keeps prior value; QueueFull is returned", "[com
     auto overflow = dispatcher.enqueue_write(sp->id, std::uint16_t{1});
     REQUIRE_FALSE(overflow.has_value());
     CHECK(overflow.error().code == opc::domain::ErrorCode::QueueFull);
+}
+
+TEST_CASE("Dispatcher write queue is bounded under concurrent producers and reports depth",
+          "[component][core][dispatcher][concurrency]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    opc::adapters::MemoryMetrics metrics;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}));
+
+    auto sp = index.find_by_name("Setpoint");
+    REQUIRE(sp);
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index, .tag_store = &store, .clock = &clock, .metrics = &metrics});
+    dispatcher.bind_transport("ep1", &transport);
+
+    constexpr int kThreads = 8;
+    constexpr int kWritesPerThread = 128;
+    std::atomic<int> accepted{0};
+    std::vector<std::thread> producers;
+    for (int thread = 0; thread < kThreads; ++thread) {
+        producers.emplace_back([&, thread] {
+            for (int i = 0; i < kWritesPerThread; ++i) {
+                const auto value =
+                    static_cast<std::uint16_t>(thread * kWritesPerThread + i);
+                if (dispatcher.enqueue_write(sp->id, value)) {
+                    accepted.fetch_add(1);
+                }
+            }
+        });
+    }
+    for (auto& producer : producers) {
+        producer.join();
+    }
+
+    CHECK(accepted.load() == kThreads * kWritesPerThread);
+    CHECK(metrics.gauge("modbus_write_queue_depth") == 1024.0);
+    auto overflow = dispatcher.enqueue_write(sp->id, std::uint16_t{1});
+    REQUIRE_FALSE(overflow);
+    CHECK(overflow.error().code == opc::domain::ErrorCode::QueueFull);
+    CHECK(metrics.counter("modbus_write_queue_overflow_total") == 1.0);
+
+    REQUIRE(dispatcher.flush_writes("ep1"));
+    CHECK(metrics.gauge("modbus_write_queue_depth") == 0.0);
+    auto stored = store.get(sp->id);
+    REQUIRE(stored);
+    CHECK(stored->quality == opc::domain::Quality::Good);
 }

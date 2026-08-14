@@ -291,6 +291,9 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
             return {};
         }
         batch.swap(q_it->second);
+        if (deps_.metrics != nullptr) {
+            deps_.metrics->gauge_set("modbus_write_queue_depth", 0.0);
+        }
     }
     auto t_it = transports_.find(std::string(endpoint_id));
     if (t_it == transports_.end() || t_it->second == nullptr) {
@@ -298,6 +301,10 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
         auto& queue = write_queues_[std::string(endpoint_id)];
         queue.insert(queue.begin(), std::make_move_iterator(batch.begin()),
                      std::make_move_iterator(batch.end()));
+        if (deps_.metrics != nullptr) {
+            deps_.metrics->gauge_set("modbus_write_queue_depth",
+                                     static_cast<double>(queue.size()));
+        }
         return std::unexpected(domain::Error{
             domain::ErrorCode::NotFound, "transport not bound", "core.dispatcher", false});
     }
@@ -318,6 +325,10 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
             auto& queue = write_queues_[std::string(endpoint_id)];
             queue.insert(queue.begin(), std::make_move_iterator(batch.begin() + static_cast<std::ptrdiff_t>(i + 1)),
                          std::make_move_iterator(batch.end()));
+            if (deps_.metrics != nullptr) {
+                deps_.metrics->gauge_set("modbus_write_queue_depth",
+                                         static_cast<double>(queue.size()));
+            }
             return std::unexpected(encoded.error());
         }
 
@@ -338,6 +349,10 @@ domain::Result<void> Dispatcher::flush_writes(std::string_view endpoint_id) {
             auto& queue = write_queues_[std::string(endpoint_id)];
             queue.insert(queue.begin(), std::make_move_iterator(batch.begin() + static_cast<std::ptrdiff_t>(i + 1)),
                          std::make_move_iterator(batch.end()));
+            if (deps_.metrics != nullptr) {
+                deps_.metrics->gauge_set("modbus_write_queue_depth",
+                                         static_cast<double>(queue.size()));
+            }
             return std::unexpected(wr.error());
         }
         publish_quality(deps_.tag_store, pending.tag_id, domain::Quality::Good,

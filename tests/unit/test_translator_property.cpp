@@ -125,3 +125,34 @@ TEST_CASE("Translator float32 applies scale and offset on roundtrip",
     REQUIRE(decoded);
     REQUIRE(std::get<float>(*decoded) == Catch::Approx(5.0f));
 }
+
+TEST_CASE("Translator rejects integer overflow instead of wrapping",
+          "[unit][core][translator][hardening]") {
+    Tag u16 = make_tag(TagType::UInt16, "AB");
+    REQUIRE_FALSE(Translator::encode(u16, std::uint32_t{65'536}));
+    REQUIRE_FALSE(Translator::encode(u16, std::int32_t{-1}));
+
+    Tag i16 = make_tag(TagType::Int16, "AB");
+    REQUIRE_FALSE(Translator::encode(i16, std::int32_t{32'768}));
+    REQUIRE_FALSE(Translator::encode(i16, std::int32_t{-32'769}));
+
+    Tag u32 = make_tag(TagType::UInt32, "ABCD");
+    REQUIRE_FALSE(Translator::encode(u32, std::int32_t{-1}));
+
+    Tag i32 = make_tag(TagType::Int32, "ABCD");
+    REQUIRE_FALSE(Translator::encode(i32, std::uint32_t{0xFFFFFFFFu}));
+}
+
+TEST_CASE("Translator rejects non-finite and overflowing scale results",
+          "[unit][core][translator][hardening]") {
+    Tag f32 = make_tag(TagType::Float32, "ABCD");
+    REQUIRE_FALSE(Translator::encode(f32, std::numeric_limits<double>::infinity()));
+    REQUIRE_FALSE(Translator::encode(f32, std::numeric_limits<double>::quiet_NaN()));
+    REQUIRE_FALSE(Translator::encode(f32, std::numeric_limits<double>::max()));
+
+    Tag scaled_u16 = make_tag(TagType::UInt16, "AB", 2.0, 0.0);
+    const std::uint16_t raw_max[] = {0xFFFF};
+    auto decoded = Translator::decode(scaled_u16, raw_max);
+    REQUIRE_FALSE(decoded);
+    CHECK(decoded.error().code == opc::domain::ErrorCode::InvalidArgument);
+}

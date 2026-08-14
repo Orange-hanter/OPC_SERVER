@@ -26,6 +26,10 @@
 |------|----------|
 | clang-tidy | Нет новых warnings на изменённых файлах |
 | ASan/UBSan | Preset `asan` — clean (в CI на каждом PR) |
+| Clang / warnings-as-errors | Preset `static-analysis`: альтернативный компилятор, `-Werror` |
+| clang-tidy | `scripts/run-static-analysis.sh`: analyzer/bugprone/performance findings — errors |
+| cppcheck | `scripts/run-static-analysis.sh`: warning/performance/portability — errors |
+| Valgrind Memcheck | Preset `valgrind` + `scripts/run-valgrind.sh`; nightly, без definite/indirect leaks |
 | TSan | Preset `tsan`, тесты TagStore/Dispatcher — clean (nightly; блокер до Asio) |
 | Coverage | `scripts/coverage.sh` ≥ 70% line на `Src/domain`, `Src/core`, `Src/project` |
 | Fuzz | `OPC_ENABLE_FUZZERS` + Clang; smoke corpus на JSON loader |

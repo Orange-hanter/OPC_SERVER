@@ -51,3 +51,36 @@ TEST_CASE("TagStore mark_stale_before", "[unit][core][tagstore]") {
     REQUIRE(got->quality == Quality::Uncertain);
     REQUIRE(got->reason == QualityReason::Stale);
 }
+
+TEST_CASE("TagStore callbacks may unsubscribe and publish reentrantly",
+          "[unit][core][tagstore][hardening]") {
+    opc::core::TagStore store;
+    int first_calls = 0;
+    int second_calls = 0;
+    std::uint64_t first_id = 0;
+
+    first_id = store.subscribe([&](TagId id, const TagValue&) {
+        ++first_calls;
+        store.unsubscribe(first_id);
+        if (id == 1) {
+            TagValue nested;
+            nested.value = std::uint16_t{2};
+            nested.quality = Quality::Good;
+            store.publish(2, nested);
+        }
+    });
+    store.subscribe([&](TagId, const TagValue&) { ++second_calls; });
+
+    TagValue value;
+    value.value = std::uint16_t{1};
+    value.quality = Quality::Good;
+    store.publish(1, value);
+
+    CHECK(first_calls == 1);
+    CHECK(second_calls == 2);
+    REQUIRE(store.get(2));
+
+    store.publish(3, value);
+    CHECK(first_calls == 1);
+    CHECK(second_calls == 3);
+}

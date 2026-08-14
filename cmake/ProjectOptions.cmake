@@ -74,6 +74,10 @@ function(opc_configure_project_options)
   if(OPC_ENABLE_CLANG_TIDY)
     find_program(OPC_CLANG_TIDY_EXECUTABLE NAMES clang-tidy REQUIRED)
   endif()
+
+  if(OPC_ENABLE_CPPCHECK)
+    find_program(OPC_CPPCHECK_EXECUTABLE NAMES cppcheck REQUIRED)
+  endif()
 endfunction()
 
 function(opc_apply_project_options target)
@@ -99,5 +103,15 @@ function(opc_apply_project_options target)
   if(OPC_ENABLE_CLANG_TIDY)
     set_property(TARGET "${target}" PROPERTY CXX_CLANG_TIDY
       "${OPC_CLANG_TIDY_EXECUTABLE};--use-color")
+  endif()
+
+  if(OPC_ENABLE_CPPCHECK)
+    set_property(TARGET "${target}" PROPERTY CXX_CPPCHECK
+      "${OPC_CPPCHECK_EXECUTABLE}"
+      "--enable=warning,performance,portability"
+      "--error-exitcode=2"
+      "--inline-suppr"
+      "--suppress=missingIncludeSystem"
+      "--std=c++23")
   endif()
 endfunction()

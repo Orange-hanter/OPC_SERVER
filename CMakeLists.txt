@@ -23,6 +23,7 @@ option(OPC_ENABLE_IPO "Enable interprocedural optimization when supported" OFF)
 option(OPC_ENABLE_UNITY_BUILD "Batch project sources into unity translation units" OFF)
 option(OPC_ENABLE_PCH "Use a precompiled header for project targets" OFF)
 option(OPC_ENABLE_CLANG_TIDY "Run clang-tidy while compiling project targets" OFF)
+option(OPC_ENABLE_CPPCHECK "Run cppcheck while compiling project targets" OFF)
 option(OPC_WITH_OTLP "Enable OpenTelemetry OTLP/HTTP metrics exporter" OFF)
 
 set(OPC_DEPENDENCY_PROVIDER "AUTO" CACHE STRING

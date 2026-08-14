@@ -3,8 +3,10 @@
 #include "adapters/modbus_tcp_transport.hpp"
 #include "support/loopback_modbus_slave.hpp"
 
+#include <array>
 #include <chrono>
 #include <thread>
+#include <vector>
 
 using opc::adapters::ModbusTcpTransport;
 
@@ -85,6 +87,86 @@ TEST_CASE("ModbusTcpTransport maps exception 03 illegal value", "[integration][m
     REQUIRE_FALSE(failed);
     REQUIRE(failed.error().code == opc::domain::ErrorCode::ModbusException);
     REQUIRE(failed.error().protocol_status == 3);
+}
+
+TEST_CASE("ModbusTcpTransport rejects mismatched MBAP and PDU identity",
+          "[integration][modbus][tcp][hardening]") {
+    LoopbackModbusSlave slave;
+    slave.set_holding(1, 0, 42);
+    ModbusTcpTransport transport(500);
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = slave.port()}));
+
+    const auto require_decoding_error = [&](auto inject) {
+        inject();
+        auto result = transport.read_holding_registers(1, 0, 1);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().code == opc::domain::ErrorCode::Decoding);
+        CHECK_FALSE(result.error().retryable);
+    };
+
+    require_decoding_error([&] { slave.corrupt_transaction_once(); });
+    require_decoding_error([&] { slave.corrupt_protocol_once(); });
+    require_decoding_error([&] { slave.corrupt_unit_once(); });
+    require_decoding_error([&] { slave.corrupt_function_once(); });
+    require_decoding_error([&] { slave.corrupt_byte_count_once(); });
+
+    auto valid = transport.read_holding_registers(1, 0, 1);
+    REQUIRE(valid);
+    CHECK((*valid)[0] == 42);
+}
+
+TEST_CASE("ModbusTcpTransport validates write response echoes",
+          "[integration][modbus][tcp][hardening]") {
+    LoopbackModbusSlave slave;
+    ModbusTcpTransport transport(500);
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = slave.port()}));
+
+    slave.corrupt_write_echo_once();
+    auto single = transport.write_single_register(1, 10, 0x1234);
+    REQUIRE_FALSE(single);
+    CHECK(single.error().code == opc::domain::ErrorCode::Decoding);
+
+    slave.corrupt_write_echo_once();
+    const std::array<std::uint16_t, 2> pair{1, 2};
+    auto multiple = transport.write_multiple_registers(1, 20, pair);
+    REQUIRE_FALSE(multiple);
+    CHECK(multiple.error().code == opc::domain::ErrorCode::Decoding);
+
+    slave.corrupt_write_echo_once();
+    auto coil = transport.write_single_coil(1, 5, true);
+    REQUIRE_FALSE(coil);
+    CHECK(coil.error().code == opc::domain::ErrorCode::Decoding);
+}
+
+TEST_CASE("ModbusTcpTransport enforces Modbus quantity limits before I/O",
+          "[integration][modbus][tcp][hardening]") {
+    ModbusTcpTransport transport(50);
+
+    auto zero_registers = transport.read_holding_registers(1, 0, 0);
+    REQUIRE_FALSE(zero_registers);
+    CHECK(zero_registers.error().code == opc::domain::ErrorCode::InvalidArgument);
+
+    auto too_many_registers = transport.read_input_registers(1, 0, 126);
+    REQUIRE_FALSE(too_many_registers);
+    CHECK(too_many_registers.error().code == opc::domain::ErrorCode::InvalidArgument);
+
+    auto zero_bits = transport.read_coils(1, 0, 0);
+    REQUIRE_FALSE(zero_bits);
+    CHECK(zero_bits.error().code == opc::domain::ErrorCode::InvalidArgument);
+
+    auto too_many_bits = transport.read_discrete_inputs(1, 0, 2001);
+    REQUIRE_FALSE(too_many_bits);
+    CHECK(too_many_bits.error().code == opc::domain::ErrorCode::InvalidArgument);
+
+    const std::vector<std::uint16_t> empty;
+    auto zero_write = transport.write_multiple_registers(1, 0, empty);
+    REQUIRE_FALSE(zero_write);
+    CHECK(zero_write.error().code == opc::domain::ErrorCode::InvalidArgument);
+
+    const std::vector<std::uint16_t> too_many(124, 0);
+    auto oversized_write = transport.write_multiple_registers(1, 0, too_many);
+    REQUIRE_FALSE(oversized_write);
+    CHECK(oversized_write.error().code == opc::domain::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("ModbusTcpTransport reconnects after peer close", "[integration][modbus][tcp]") {
