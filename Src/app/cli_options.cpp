@@ -60,7 +60,8 @@ void print_usage(std::ostream& out) {
         << "             [--runtime-doctor] [--ua-cert PATH] [--ua-key PATH] [--ua-trust PATH]\n"
         << "             [--ua-crl PATH] [--ua-strict-certs] [--ua-accept-untrusted]\n"
         << "             [--ua-user user:pass] [--ua-deny-anonymous] [--ua-allow-anonymous]\n"
-        << "             [--ua-allow-none-password]\n"
+        << "             [--ua-allow-none-password] [--ua-allow-certificate-identity]\n"
+        << "             [--ua-allow-none-certificate]\n"
         << "  OPC_SERVER --version\n"
         << "  OPC_SERVER --help\n\n"
         << "Options:\n"
@@ -92,6 +93,8 @@ void print_usage(std::ostream& out) {
         << "  --ua-deny-anonymous         Reject Anonymous IdentityToken\n"
         << "  --ua-allow-anonymous        Allow Anonymous even when users are configured\n"
         << "  --ua-allow-none-password    Lab: username/password over SecurityMode None\n"
+        << "  --ua-allow-certificate-identity  Enable X509IdentityToken (sessionPKI / --ua-trust)\n"
+        << "  --ua-allow-none-certificate Lab: X509IdentityToken over SecurityMode None\n"
         << "  --version                   Print version and exit\n";
 }
 
@@ -137,6 +140,14 @@ CliOptions parse_cli(int argc, char const* argv[]) {
         }
         if (arg == "--ua-allow-none-password") {
             opts.ua_allow_none_password = true;
+            continue;
+        }
+        if (arg == "--ua-allow-certificate-identity") {
+            opts.ua_allow_certificate_identity = true;
+            continue;
+        }
+        if (arg == "--ua-allow-none-certificate") {
+            opts.ua_allow_none_certificate = true;
             continue;
         }
         if (arg == "--ua-user") {

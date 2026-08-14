@@ -43,6 +43,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   Catch2 `[otlp][live]` gated by `OPC_OTLP_SMOKE=1`
 - Async `IModbusTransport` completion tokens (`async_*` + `IExecutor`); TCP worker-thread
   I/O; `Dispatcher::poll_due_async` keeps the reactor strand free during Modbus RTT
+- X.509 user tokens (`opcua.allowCertificateIdentity`, `--ua-allow-certificate-identity`);
+  sessionPKI trust via `--ua-trust`; Studio/opc-monitor `userCertificate`/`userPrivateKey`
 - Frame-log replay (`ReplayModbusTransport`, `load_frame_log_file`) for offline Dispatcher tests
 - Historian cold pending no longer drops samples before `flush()`; frame log emits outside the TCP mutex
 - `opc-map doctor`: register overlaps, unpolled tags, sparse/gappy poll blocks

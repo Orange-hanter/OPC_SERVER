@@ -15,7 +15,7 @@
 | **Roadmap ядра, этапы 0–7** | **100%** | 56 из 56 пунктов чеклиста (без Classic/DA и прочего «вне ядра») |
 | Инкременты после Studio (A–D + traces) | **100%** | A–D и хвост этапа 5 закрыты |
 
-«100%» — закрытые пункты спецификации ядра. Это **ещё не** полный промышленный контур: demo-plant остаётся на `None`, UDP — MBAP в датаграмме, не RTU, нагрузочный стенд — Catch2 smoke. OTLP exporters + live collector smoke и async Modbus transport API есть; industrial CA / X.509 user tokens — вне ядра.
+«100%» — закрытые пункты спецификации ядра. Это **ещё не** полный промышленный контур: demo-plant остаётся на `None`, UDP — MBAP в датаграмме, не RTU, нагрузочный стенд — Catch2 smoke. OTLP exporters + live collector smoke, async Modbus transport API и X.509 user tokens есть; полноценный industrial CA lifecycle / роли RBAC — вне ядра.
 
 ## Сейчас (закрыто)
 
@@ -45,10 +45,11 @@
 4. ~~Username token / AccessControl (`opcua.users`, `--ua-user`, Studio/opc-monitor)~~ — `cursor/username-token-860d`
 5. ~~Живой OTLP-коллектор в CI~~ — `cursor/otlp-collector-ci-860d`
 6. ~~Полный async `IModbusTransport` API (completion tokens)~~ — `cursor/async-imodbus-transport-860d`
+7. ~~X.509 user tokens (`allowCertificateIdentity`, sessionPKI / `--ua-trust`)~~ — `cursor/x509-user-token-860d`
 
 ### Не в ядре (не входят в процент)
 
-- Industrial CA / X.509 user tokens сверх username AccessControl
+- Полноценный industrial CA lifecycle / X.509 RBAC сверх AccessControl_default
 - Встроенный OPC DA/Classic
 - Полноценная SCADA
 - Другие полевые протоколы без отдельного эпика Translator

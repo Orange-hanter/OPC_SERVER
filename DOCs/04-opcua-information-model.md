@@ -117,17 +117,24 @@ Root
 - `--ua-strict-certs` — явно запретить AcceptAll (побеждает `--ua-accept-untrusted`).
 
 Studio / `opc-monitor` принимают `securityMode` `Sign`/`SignAndEncrypt`, пути `certificate`/`privateKey`
-и опциональные `username`/`password` (UsernameIdentityToken). Пустые пути сертификата → самоподписанный
-клиентский сертификат.
+(канальный application cert), опциональные `username`/`password` (UsernameIdentityToken) и
+`userCertificate`/`userPrivateKey` (X509IdentityToken). Пустые пути канального сертификата →
+самоподписанный клиентский сертификат.
 
 Серверная идентичность (проект / CLI):
 
 - `opcua.users[]` `{username,password}` или `--ua-user user:pass` (повторяемый);
-- при наличии users Anonymous по умолчанию **выключен** (`allowAnonymous: false`), иначе
-  `--ua-deny-anonymous` / `--ua-allow-anonymous`;
+- `opcua.allowCertificateIdentity` / `--ua-allow-certificate-identity` — X509IdentityToken;
+  проверка user cert через `sessionPKI` (`--ua-trust` / `--ua-crl`, тот же список что и для канала);
+- при наличии users **или** certificate identity Anonymous по умолчанию **выключен**
+  (`allowAnonymous: false`), иначе `--ua-deny-anonymous` / `--ua-allow-anonymous`;
 - username/password при `securityMode: None` — только с `opcua.allowNonePassword` /
   `--ua-allow-none-password` (иначе `start()` отказывается: plaintext credentials);
-- для промышленного контура предпочитайте Sign/SignAndEncrypt + users.
+- X509IdentityToken при `securityMode: None` — только с `opcua.allowNoneCertificate` /
+  `--ua-allow-none-certificate` (+ trust list или AcceptAll);
+- без `allowCertificateIdentity` сервер **не** рекламирует Certificate user token policy
+  (даже если channel PKI установлен);
+- для промышленного контура: Sign/SignAndEncrypt + trust list + users и/или certificate identity.
 
 ## Граница с OPC Classic / DA
 

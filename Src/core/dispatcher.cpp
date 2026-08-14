@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -501,27 +502,46 @@ void Dispatcher::poll_due_async(std::string_view endpoint_id,
             }
         }
 
-        auto index = std::make_shared<std::size_t>(0);
-        auto step = std::make_shared<std::function<void()>>();
-        *step = [this, transport, now, tags, index, step, finish, first_error]() {
-            if (*index >= tags->size()) {
-                if (*first_error) {
-                    finish(std::unexpected(**first_error));
-                } else {
-                    finish({});
+        // Shared poll chain without a self-owning std::function cycle (ASan).
+        struct PollChain : std::enable_shared_from_this<PollChain> {
+            Dispatcher* self{nullptr};
+            ports::IModbusTransport* transport{nullptr};
+            domain::TimestampMs now{0};
+            std::shared_ptr<std::vector<TagBinding>> tags;
+            std::size_t index{0};
+            ports::ModbusCompletion<void> finish;
+            std::shared_ptr<std::optional<domain::Error>> first_error;
+
+            void next() {
+                if (index >= tags->size()) {
+                    if (*first_error) {
+                        finish(std::unexpected(**first_error));
+                    } else {
+                        finish({});
+                    }
+                    return;
                 }
-                return;
+                TagBinding binding = (*tags)[index++];
+                auto keep = shared_from_this();
+                self->poll_tag_async(
+                    std::move(binding), *transport, now,
+                    [keep](domain::Result<void> r) {
+                        if (!r && !*keep->first_error) {
+                            *keep->first_error = r.error();
+                        }
+                        keep->next();
+                    });
             }
-            TagBinding binding = (*tags)[(*index)++];
-            poll_tag_async(std::move(binding), *transport, now,
-                           [step, finish, first_error](domain::Result<void> r) {
-                               if (!r && !*first_error) {
-                                   *first_error = r.error();
-                               }
-                               (*step)();
-                           });
         };
-        (*step)();
+
+        auto chain = std::make_shared<PollChain>();
+        chain->self = this;
+        chain->transport = transport;
+        chain->now = now;
+        chain->tags = std::move(tags);
+        chain->finish = std::move(finish);
+        chain->first_error = std::move(first_error);
+        chain->next();
     };
 
     if (!transport->is_connected()) {

@@ -66,9 +66,127 @@ void keep_security_endpoints(UA_ServerConfig* config,
     config->endpointsSize = write;
 }
 
+[[nodiscard]] domain::Result<void> configure_session_pki_for_identity(
+    UA_ServerConfig* config,
+    const project::OpcUaSettings& opcua,
+    const OpcUaSecurityOptions& security,
+    ports::ILog* log) {
+    if (!opcua.allow_certificate_identity) {
+        // Username-only / anonymous AC must not advertise X509IdentityToken via leftover
+        // sessionPKI from setMinimal / setDefaultWithSecurityPolicies.
+        config->sessionPKI.verifyCertificate = nullptr;
+        return {};
+    }
+
+    if (opcua.security_mode == project::SecurityMode::None && !opcua.allow_none_certificate) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::InvalidArgument,
+            "X509IdentityToken with SecurityMode None requires opcua.allowNoneCertificate "
+            "or --ua-allow-none-certificate",
+            "adapters.opcua",
+            false});
+    }
+
+#ifdef UA_ENABLE_ENCRYPTION
+    if (opcua.security_mode == project::SecurityMode::None) {
+        if (security.accept_untrusted) {
+            UA_CertificateVerification_AcceptAll(&config->sessionPKI);
+            log_msg(log, ports::LogLevel::Warn,
+                    "X509IdentityToken over None with AcceptAll sessionPKI (lab)");
+            return {};
+        }
+        if (security.trust_list.empty()) {
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::InvalidArgument,
+                "X509IdentityToken over None requires --ua-trust (or --ua-accept-untrusted)",
+                "adapters.opcua",
+                false});
+        }
+        std::vector<std::vector<std::uint8_t>> trust_store;
+        std::vector<UA_ByteString> trust_list;
+        for (const auto& path : security.trust_list) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) {
+                return std::unexpected(domain::Error{
+                    domain::ErrorCode::InvalidArgument,
+                    "cannot read --ua-trust certificate for sessionPKI",
+                    "adapters.opcua",
+                    false});
+            }
+            trust_store.emplace_back(std::istreambuf_iterator<char>(in),
+                                     std::istreambuf_iterator<char>());
+        }
+        trust_list.resize(trust_store.size());
+        for (std::size_t i = 0; i < trust_store.size(); ++i) {
+            trust_list[i].length = trust_store[i].size();
+            trust_list[i].data = trust_store[i].empty() ? nullptr : trust_store[i].data();
+        }
+        std::vector<std::vector<std::uint8_t>> revocation_store;
+        std::vector<UA_ByteString> revocation_list;
+        for (const auto& path : security.revocation_list) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) {
+                return std::unexpected(domain::Error{
+                    domain::ErrorCode::InvalidArgument,
+                    "cannot read --ua-crl for sessionPKI",
+                    "adapters.opcua",
+                    false});
+            }
+            revocation_store.emplace_back(std::istreambuf_iterator<char>(in),
+                                          std::istreambuf_iterator<char>());
+        }
+        revocation_list.resize(revocation_store.size());
+        for (std::size_t i = 0; i < revocation_store.size(); ++i) {
+            revocation_list[i].length = revocation_store[i].size();
+            revocation_list[i].data =
+                revocation_store[i].empty() ? nullptr : revocation_store[i].data();
+        }
+        const auto st = UA_CertificateVerification_Trustlist(
+            &config->sessionPKI, trust_list.empty() ? nullptr : trust_list.data(), trust_list.size(),
+            nullptr, 0, revocation_list.empty() ? nullptr : revocation_list.data(),
+            revocation_list.size());
+        if (st != UA_STATUSCODE_GOOD) {
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::Internal, "sessionPKI Trustlist install failed",
+                "adapters.opcua", false});
+        }
+        log_msg(log, ports::LogLevel::Warn,
+                "X509IdentityToken allowed over SecurityMode None (allowNoneCertificate)");
+        return {};
+    }
+
+    if (security.accept_untrusted) {
+        log_msg(log, ports::LogLevel::Warn,
+                "X509IdentityToken enabled with AcceptAll sessionPKI (lab); any user cert passes");
+    } else if (security.trust_list.empty()) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::InvalidArgument,
+            "X509IdentityToken requires --ua-trust (or --ua-accept-untrusted for lab)",
+            "adapters.opcua",
+            false});
+    } else if (config->sessionPKI.verifyCertificate == nullptr) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::Internal,
+            "sessionPKI missing after encrypted config; cannot enable X509IdentityToken",
+            "adapters.opcua",
+            false});
+    }
+    return {};
+#else
+    (void)security;
+    (void)log;
+    return std::unexpected(domain::Error{
+        domain::ErrorCode::NotImplemented,
+        "X509IdentityToken requires UA_ENABLE_ENCRYPTION",
+        "adapters.opcua",
+        false});
+#endif
+}
+
 [[nodiscard]] domain::Result<void> apply_identity_access_control(
     UA_ServerConfig* config, const project::OpcUaSettings& opcua, ports::ILog* log) {
-    const bool customize = !opcua.users.empty() || !opcua.allow_anonymous;
+    const bool customize = !opcua.users.empty() || !opcua.allow_anonymous ||
+                           opcua.allow_certificate_identity;
     if (!customize) {
         return {};
     }
@@ -79,6 +197,14 @@ void keep_security_endpoints(UA_ServerConfig* config,
             domain::ErrorCode::InvalidArgument,
             "username/password with SecurityMode None requires opcua.allowNonePassword "
             "or --ua-allow-none-password (credentials would be plaintext)",
+            "adapters.opcua",
+            false});
+    }
+
+    if (opcua.allow_certificate_identity && config->sessionPKI.verifyCertificate == nullptr) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::Internal,
+            "X509IdentityToken enabled but sessionPKI.verifyCertificate is unset",
             "adapters.opcua",
             false});
     }
@@ -115,10 +241,15 @@ void keep_security_endpoints(UA_ServerConfig* config,
                 "username/password allowed over SecurityMode None (allowNonePassword)");
     }
 
-    log_msg(log, ports::LogLevel::Info,
-            opcua.allow_anonymous
-                ? "AccessControl: username tokens configured (anonymous allowed)"
-                : "AccessControl: username tokens configured (anonymous denied)");
+    std::string msg = "AccessControl:";
+    if (opcua.allow_certificate_identity) {
+        msg += " X509IdentityToken";
+    }
+    if (!opcua.users.empty()) {
+        msg += " UsernameIdentityToken";
+    }
+    msg += opcua.allow_anonymous ? " (anonymous allowed)" : " (anonymous denied)";
+    log_msg(log, ports::LogLevel::Info, msg);
     return {};
 }
 
@@ -737,6 +868,14 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
         urls[0] = UA_STRING_ALLOC(endpoint_url_.c_str());
         config->serverUrls = urls;
         config->serverUrlsSize = 1;
+    }
+
+    if (auto session_pki =
+            configure_session_pki_for_identity(config, project_->opcua, security_, log_);
+        !session_pki) {
+        UA_Server_delete(server_);
+        server_ = nullptr;
+        return session_pki;
     }
 
     if (auto identity = apply_identity_access_control(config, project_->opcua, log_); !identity) {

@@ -47,6 +47,8 @@ struct ConnectionProfile {
     password: Option<String>,
     certificate_path: Option<String>,
     private_key_path: Option<String>,
+    user_certificate_path: Option<String>,
+    user_private_key_path: Option<String>,
 }
 
 fn validate_project_path(path: &Path) -> Result<(), String> {
@@ -348,6 +350,14 @@ async fn monitor_connect(
             .private_key_path
             .as_deref()
             .is_some_and(|path| path.len() > 4096)
+        || profile
+            .user_certificate_path
+            .as_deref()
+            .is_some_and(|path| path.len() > 4096)
+        || profile
+            .user_private_key_path
+            .as_deref()
+            .is_some_and(|path| path.len() > 4096)
     {
         return Err("Certificate paths are too long".to_owned());
     }
@@ -372,6 +382,8 @@ async fn monitor_connect(
             "securityMode": profile.security_mode,
             "certificate": profile.certificate_path,
             "privateKey": profile.private_key_path,
+            "userCertificate": profile.user_certificate_path,
+            "userPrivateKey": profile.user_private_key_path,
             "username": profile.username,
             "password": profile.password,
         }),

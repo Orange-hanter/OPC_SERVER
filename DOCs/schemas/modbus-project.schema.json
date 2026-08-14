@@ -62,6 +62,16 @@
           "default": false,
           "description": "Лаборатория: username/password при securityMode None (иначе start() откажется)"
         },
+        "allowCertificateIdentity": {
+          "type": "boolean",
+          "default": false,
+          "description": "Разрешить X509IdentityToken; проверка через sessionPKI (--ua-trust / CRL)"
+        },
+        "allowNoneCertificate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Лаборатория: X509IdentityToken при securityMode None (иначе start() откажется)"
+        },
         "users": {
           "type": "array",
           "description": "Список UsernameIdentityToken (open62541 AccessControl_default)",
