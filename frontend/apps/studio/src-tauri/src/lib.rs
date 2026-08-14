@@ -340,10 +340,10 @@ async fn monitor_connect(
     {
         return Err("Unsupported security mode".to_owned());
     }
-    if (profile
-            .certificate_path
-            .as_deref()
-            .is_some_and(|path| path.len() > 4096)
+    if profile
+        .certificate_path
+        .as_deref()
+        .is_some_and(|path| path.len() > 4096)
         || profile
             .private_key_path
             .as_deref()

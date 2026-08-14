@@ -209,8 +209,23 @@ void install_session_hooks(UA_Server* server, opc::adapters::OpcUaServer* self) 
 }
 
 void uninstall_session_hooks(UA_Server* server) {
+    UA_ServerConfig* config = server != nullptr ? UA_Server_getConfig(server) : nullptr;
     std::lock_guard lock(g_session_hooks_mu);
-    g_session_hooks.erase(server);
+    const auto it = g_session_hooks.find(server);
+    if (it == g_session_hooks.end()) {
+        return;
+    }
+    // Restore AccessControl callbacks before erase so a late ActivateSession cannot
+    // see missing hooks and skip username checks (fail-open).
+    if (config != nullptr) {
+        if (it->second.orig_activate != nullptr) {
+            config->accessControl.activateSession = it->second.orig_activate;
+        }
+        if (it->second.orig_close != nullptr) {
+            config->accessControl.closeSession = it->second.orig_close;
+        }
+    }
+    g_session_hooks.erase(it);
 }
 
 }  // namespace
@@ -803,6 +818,9 @@ void OpcUaServer::stop() {
         last_error_.clear();
         diagnostics_dirty_ = false;
         active_sessions_.clear();
+    }
+    if (metrics_ != nullptr) {
+        metrics_->gauge_set("ua_sessions", 0.0);
     }
     diagnostics_state_node_ = 0;
     diagnostics_good_node_ = 0;

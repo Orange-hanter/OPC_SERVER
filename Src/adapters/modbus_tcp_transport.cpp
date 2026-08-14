@@ -258,7 +258,8 @@ ModbusTcpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pd
 
                         const std::uint16_t length =
                             static_cast<std::uint16_t>(((*mbap)[4] << 8) | (*mbap)[5]);
-                        if (length < 2) {
+                        // Modbus TCP: length = unit id + PDU; ADU max 260 → length ≤ 254.
+                        if (length < 2 || length > 254) {
                             out = std::unexpected(
                                 make_err(domain::ErrorCode::Decoding, "bad MBAP length", false));
                             impl_->complete_op();
