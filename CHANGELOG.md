@@ -98,6 +98,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Studio package CI: OpenSSL on Windows; LLVM + OpenSSL on macOS for C++23 sidecars
 - Studio Windows package: discover Chocolatey OpenSSL (include + `lib/VC/x64/MD`)
   and build `opc-map` / `opc-monitor` with MSVC instead of PATH MinGW
+- open62541 1.4.11 PKI: use `ASN1_STRING_*` accessors so OpenSSL 4 (opaque
+  `ASN1_STRING`) compiles on Windows Studio sidecars
 - Write batch tail no longer dropped when a Modbus write fails mid-flush
 - Bad/WriteRejected publishes keep the previous engineering ScalarValue
 - Removed adapters→core coupling via `RuntimeIndex` in the OPC UA adapter

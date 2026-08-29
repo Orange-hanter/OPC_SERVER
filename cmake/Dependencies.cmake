@@ -104,10 +104,18 @@ function(_opc_fetch_open62541)
   set(UA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
   set(UA_NAMESPACE_ZERO "REDUCED" CACHE STRING "" FORCE)
 
+  # OpenSSL 4 (GitHub windows-2025 / current Chocolatey) made ASN1_STRING
+  # opaque; 1.4.11 PKI still reads ia5->length/data. Accessors work on 3.x too.
+  set(_opc_open62541_openssl4_patch
+    "${CMAKE_SOURCE_DIR}/cmake/patches/open62541_openssl4_asn1.cmake")
   FetchContent_Declare(open62541
     GIT_REPOSITORY https://github.com/open62541/open62541.git
     GIT_TAG "v${_OPC_OPEN62541_VERSION}"
     GIT_SHALLOW TRUE
+    PATCH_COMMAND
+      "${CMAKE_COMMAND}"
+      "-DFILE=<SOURCE_DIR>/plugins/crypto/openssl/ua_pki_openssl.c"
+      -P "${_opc_open62541_openssl4_patch}"
     SYSTEM
     EXCLUDE_FROM_ALL
   )
