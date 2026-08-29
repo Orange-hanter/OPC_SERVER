@@ -35,7 +35,48 @@
       "id": "generic-tank-sensor",
       "name": "Generic tank sensor block",
       "vendor": "Demo",
-      "description": "Типовая карта: уровень float, температура float, статус word"
+      "description": "Типовая карта: уровень float, температура float, статус word",
+      "tags": [
+        {
+          "name": "Tank1.Level",
+          "nodePath": "Plant/Tank1/Level",
+          "area": "holding",
+          "address": 0,
+          "type": "float32",
+          "byteOrder": "ABCD",
+          "scale": 1.0,
+          "offset": 0.0,
+          "unit": "m",
+          "writable": false,
+          "group": "tank1-fast",
+          "description": "Уровень жидкости"
+        },
+        {
+          "name": "Tank1.Temperature",
+          "nodePath": "Plant/Tank1/Temperature",
+          "area": "holding",
+          "address": 2,
+          "type": "float32",
+          "byteOrder": "CDAB",
+          "scale": 1.0,
+          "offset": 0.0,
+          "unit": "°C",
+          "writable": false,
+          "group": "tank1-fast",
+          "description": "Температура"
+        },
+        {
+          "name": "Tank1.Status",
+          "nodePath": "Plant/Tank1/Status",
+          "area": "holding",
+          "address": 4,
+          "type": "uint16",
+          "byteOrder": "AB",
+          "writable": false,
+          "group": "tank1-slow",
+          "description": "Битовая маска статуса"
+        }
+      ]
     }
   ],
   "devices": [

@@ -1,0 +1,12 @@
+#pragma once
+
+#include <string_view>
+
+namespace opc::project {
+
+/// Bundled copy of DOCs/schemas/modbus-project.schema.json (JSON Schema 2020-12).
+inline constexpr std::string_view kEmbeddedModbusProjectSchema = R"OPCJSON(
+@OPC_MODBUS_PROJECT_SCHEMA@
+)OPCJSON";
+
+}  // namespace opc::project

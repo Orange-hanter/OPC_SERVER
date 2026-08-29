@@ -2,9 +2,11 @@
 
 #include "domain/types.hpp"
 #include "ports/i_log.hpp"
+#include "ports/i_metrics.hpp"
 #include "ports/i_opc_ua_facade.hpp"
 #include "ports/i_tag_store.hpp"
 #include "project/types.hpp"
+#include "adapters/ua_pki.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -15,6 +17,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 struct UA_Server;
@@ -23,12 +26,16 @@ namespace opc::adapters {
 
 struct OpcUaNodeContext;
 
-/// OPC UA server (open62541). Security None for lab.
+/// OPC UA server (open62541). Honors project securityMode (None / Sign / SignAndEncrypt).
 /// Reads come from ITagStore via DataSource; writes enqueue via OpcUaWriteHandler.
 class OpcUaServer final : public ports::IOpcUaFacade {
 public:
-    explicit OpcUaServer(ports::ILog* log = nullptr);
+    explicit OpcUaServer(ports::ILog* log = nullptr,
+                         ports::IMetrics* metrics = nullptr,
+                         OpcUaSecurityOptions security = {});
     ~OpcUaServer() override;
+
+    void set_security_options(OpcUaSecurityOptions security) { security_ = std::move(security); }
 
     OpcUaServer(const OpcUaServer&) = delete;
     OpcUaServer& operator=(const OpcUaServer&) = delete;
@@ -57,6 +64,9 @@ public:
                                                         domain::QualityReason reason);
     [[nodiscard]] static std::uint32_t map_error_to_status(const domain::Error& error);
 
+    void note_session_activate(std::uint32_t session_id);
+    void note_session_close(std::uint32_t session_id);
+
 private:
     domain::Result<void> ensure_path(std::string_view node_path, std::uint32_t& out_node_id);
     domain::Result<void> add_variable(domain::TagId tag_id,
@@ -65,10 +75,13 @@ private:
                                       const project::Tag& tag);
     domain::Result<void> add_diagnostics();
     void note_tag_quality(domain::TagId id, const domain::TagValue& value);
+    void publish_quality_metrics();
     void write_diagnostics();
     void pump_loop();
 
     ports::ILog* log_{nullptr};
+    ports::IMetrics* metrics_{nullptr};
+    OpcUaSecurityOptions security_{};
     UA_Server* server_{nullptr};
     std::shared_ptr<const project::Project> project_;
     std::string endpoint_url_;
@@ -87,6 +100,7 @@ private:
     std::uint64_t good_count_{0};
     std::uint64_t uncertain_count_{0};
     std::uint64_t bad_count_{0};
+    std::unordered_set<std::uint32_t> active_sessions_;
     std::string last_error_;
     bool diagnostics_dirty_{false};
     std::uint32_t diagnostics_state_node_{0};

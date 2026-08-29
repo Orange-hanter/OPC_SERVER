@@ -4,6 +4,7 @@
 #include "adapters/memory_metrics.hpp"
 #include "adapters/system_clock.hpp"
 #include "adapters/testsupport/fake_modbus_transport.hpp"
+#include "adapters/testsupport/recording_tracer.hpp"
 #include "core/dispatcher.hpp"
 #include "core/runtime_index.hpp"
 #include "core/tag_store.hpp"
@@ -12,6 +13,8 @@
 #include "project/load.hpp"
 
 #include <atomic>
+#include <chrono>
+#include <future>
 #include <thread>
 #include <vector>
 using opc::adapters::testsupport::FakeModbusTransport;
@@ -263,4 +266,174 @@ TEST_CASE("Dispatcher preserves unprocessed queue tail after a mid-batch encodin
     REQUIRE(recovered);
     CHECK(std::get<std::uint16_t>(recovered->value) == 30);
     CHECK(recovered->quality == opc::domain::Quality::Good);
+}
+
+TEST_CASE("Dispatcher poll_due_async via fake transport", "[component][core][dispatcher][async]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}).has_value());
+
+    auto level = index.find_by_name("Level");
+    REQUIRE(level);
+
+    auto encoded = Translator::encode(level->tag, 3.5f);
+    REQUIRE(encoded);
+    transport.set_holding(0, (*encoded)[0]);
+    transport.set_holding(1, (*encoded)[1]);
+    transport.set_holding(2, 1);
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+    });
+    dispatcher.bind_transport("ep1", &transport);
+
+    std::promise<opc::domain::Result<void>> promise;
+    auto future = promise.get_future();
+    dispatcher.poll_due_async("ep1", 2'000,
+                              [&](opc::domain::Result<void> r) { promise.set_value(std::move(r)); });
+    REQUIRE(future.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+    REQUIRE(future.get().has_value());
+
+    auto level_v = store.get(level->id);
+    REQUIRE(level_v);
+    REQUIRE(level_v->quality == opc::domain::Quality::Good);
+    REQUIRE(std::get<float>(level_v->value) == Catch::Approx(3.5f));
+}
+
+TEST_CASE("Dispatcher marks every endpoint tag Bad when connect fails",
+          "[component][core][dispatcher]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    FakeModbusTransport transport;
+    transport.set_connect_result(std::unexpected(opc::domain::Error{
+        opc::domain::ErrorCode::Connection, "refused", "fake.modbus", true}));
+
+    auto level = index.find_by_name("Level");
+    auto sp = index.find_by_name("Setpoint");
+    REQUIRE(level);
+    REQUIRE(sp);
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+    });
+    dispatcher.bind_transport("ep1", &transport);
+
+    auto poll = dispatcher.poll_due("ep1", 1'000);
+    REQUIRE_FALSE(poll.has_value());
+    CHECK(poll.error().code == opc::domain::ErrorCode::Connection);
+
+    auto level_v = store.get(level->id);
+    auto sp_v = store.get(sp->id);
+    REQUIRE(level_v);
+    REQUIRE(sp_v);
+    CHECK(level_v->quality == opc::domain::Quality::Bad);
+    CHECK(level_v->reason == opc::domain::QualityReason::NoCommunication);
+    CHECK(sp_v->quality == opc::domain::Quality::Bad);
+    CHECK(sp_v->reason == opc::domain::QualityReason::NoCommunication);
+}
+
+TEST_CASE("Dispatcher coalesces consecutive coil writes into FC15",
+          "[component][core][dispatcher]") {
+    constexpr std::string_view kJson = R"({
+      "schemaVersion": 1,
+      "name": "coils",
+      "endpoints": [
+        {"id": "ep1", "host": "127.0.0.1", "port": 502, "transport": "tcp"}
+      ],
+      "devices": [
+        {"id": "d1", "endpointId": "ep1", "unitId": 1, "tags": [
+          {"name": "C0", "area": "coil", "address": 0, "type": "bool", "writable": true, "group": "g1"},
+          {"name": "C1", "area": "coil", "address": 1, "type": "bool", "writable": true, "group": "g1"}
+        ]}
+      ],
+      "pollGroups": [
+        {"id": "g1", "periodMs": 100, "priority": "fast", "deviceId": "d1", "tagNames": ["C0", "C1"]}
+      ]
+    })";
+    auto loaded = opc::project::load_json_text(kJson, "coils.json");
+    REQUIRE(loaded.ok);
+    auto project = std::make_shared<const opc::project::Project>(std::move(loaded.project));
+    RuntimeIndex index = RuntimeIndex::build(project);
+
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}).has_value());
+
+    auto c0 = index.find_by_name("C0");
+    auto c1 = index.find_by_name("C1");
+    REQUIRE(c0);
+    REQUIRE(c1);
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+    });
+    dispatcher.bind_transport("ep1", &transport);
+    REQUIRE(dispatcher.enqueue_write(c0->id, true).has_value());
+    REQUIRE(dispatcher.enqueue_write(c1->id, false).has_value());
+    REQUIRE(dispatcher.flush_writes("ep1").has_value());
+
+    CHECK(transport.fc15_writes() == 1);
+    CHECK(transport.fc05_writes() == 0);
+    auto coils = transport.read_coils(1, 0, 2);
+    REQUIRE(coils);
+    CHECK((*coils)[0] == true);
+    CHECK((*coils)[1] == false);
+}
+
+TEST_CASE("Dispatcher records poll and write spans", "[component][core][dispatcher][trace]") {
+    auto project = tiny_project();
+    RuntimeIndex index = RuntimeIndex::build(project);
+    TagStore store;
+    opc::adapters::SystemClock clock;
+    NullMetrics metrics;
+    opc::adapters::testsupport::RecordingTracer tracer;
+    FakeModbusTransport transport;
+    REQUIRE(transport.connect({.host = "127.0.0.1", .port = 502}).has_value());
+
+    Dispatcher dispatcher(Dispatcher::Dependencies{
+        .index = index,
+        .tag_store = &store,
+        .clock = &clock,
+        .metrics = &metrics,
+        .tracer = &tracer,
+    });
+    dispatcher.bind_transport("ep1", &transport);
+    REQUIRE(dispatcher.poll_due("ep1", 1'000).has_value());
+
+    auto poll_spans = tracer.snapshot();
+    REQUIRE(poll_spans.size() == 1);
+    CHECK(poll_spans[0].name == "modbus.poll");
+    CHECK(poll_spans[0].attributes["endpoint_id"] == "ep1");
+    CHECK_FALSE(poll_spans[0].error);
+
+    auto sp = index.find_by_name("Setpoint");
+    REQUIRE(sp);
+    REQUIRE(dispatcher.enqueue_write(sp->id, std::uint16_t{11}).has_value());
+    REQUIRE(dispatcher.flush_writes("ep1").has_value());
+
+    auto after = tracer.snapshot();
+    REQUIRE(after.size() == 2);
+    CHECK(after[1].name == "modbus.write");
+    CHECK(after[1].attributes["endpoint_id"] == "ep1");
+    CHECK(after[1].attributes["write_count"] == "1");
+    CHECK_FALSE(after[1].error);
 }

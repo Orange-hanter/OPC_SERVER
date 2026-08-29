@@ -77,7 +77,11 @@ Translator — чистое преобразование без I/O.
 
 ### Live doctor
 
-`opc-map doctor` — статика проекта; runtime doctor (будущее): частота exception, «дырявые» блоки, теги никогда не Good.
+`opc-map doctor` — статика проекта (пересечения, дыры, unpolled tags).  
+Runtime doctor — отдельный снимок TagStore, не смешивается со static doctor:
+
+- `opc::core::runtime_doctor(index, tag_store)`: теги без публикации, не Good, `NoCommunication` / `Timeout` / `ModbusException`.
+- `OPC_SERVER --runtime-doctor` (обычно с `--once`): печать в stderr, код выхода `1` при Error.
 
 ## Накопление (Historian)
 

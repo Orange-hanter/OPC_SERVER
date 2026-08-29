@@ -1,11 +1,19 @@
 #include "app/server_runtime.hpp"
 
+#include "adapters/asio_reactor.hpp"
 #include "adapters/modbus_tcp_transport.hpp"
+#include "adapters/modbus_udp_transport.hpp"
 #include "ports/i_opc_ua_facade.hpp"
 #include "project/load.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <filesystem>
+#include <string>
+#include <string_view>
+#include <thread>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -28,6 +36,7 @@ ServerRuntime::ServerRuntime(ServerRuntimeDeps deps)
       log_(deps.log),
       historian_(deps.historian),
       frame_log_(deps.frame_log),
+      tracer_(deps.tracer),
       transport_factory_(std::move(deps.transport_factory)),
       opcua_(std::move(deps.opcua)) {
     dispatcher_ = std::make_unique<core::Dispatcher>(core::Dispatcher::Dependencies{
@@ -35,6 +44,7 @@ ServerRuntime::ServerRuntime(ServerRuntimeDeps deps)
         .tag_store = &tag_store_,
         .clock = clock_,
         .metrics = metrics_,
+        .tracer = tracer_,
     });
 }
 
@@ -72,20 +82,27 @@ domain::Result<void> ServerRuntime::start() {
         }
         auto* raw = transport.get();
         auto conn = raw->connect({endpoint.host, endpoint.port});
+        auto& poll_state = endpoint_poll_state_[endpoint.id];
+        if (!poll_state) {
+            poll_state = std::make_unique<EndpointPollState>();
+        }
         if (!conn) {
             log_msg(log_, ports::LogLevel::Warn,
                     "connect failed for endpoint " + endpoint.id + ": " + conn.error().message);
+            dispatcher_->mark_endpoint_bad(endpoint.id, domain::QualityReason::NoCommunication,
+                                           clock_->now_ms());
+            poll_state->next_reconnect_ms.store(clock_->now_ms() +
+                                                std::max(0, endpoint.reconnect_delay_ms));
         } else {
             log_msg(log_, ports::LogLevel::Info, "connected endpoint " + endpoint.id);
+            poll_state->next_reconnect_ms.store(0);
         }
         dispatcher_->bind_transport(endpoint.id, raw);
         transports_.emplace(endpoint.id, std::move(transport));
     }
 
     if (opcua_ != nullptr) {
-        opcua_->set_write_handler([this](domain::TagId id, domain::ScalarValue value) {
-            return dispatcher_->enqueue_write(id, std::move(value));
-        });
+        install_write_handler();
         if (auto ua = opcua_->start(project_); !ua) {
             stop();
             return ua;
@@ -141,6 +158,162 @@ domain::Result<void> ServerRuntime::poll_once(domain::TimestampMs now) {
     return first_error;
 }
 
+void ServerRuntime::install_write_handler() {
+    opcua_->set_write_handler([this](domain::TagId id, domain::ScalarValue value) {
+        auto binding = index_.find_by_id(id);
+        auto queued = dispatcher_->enqueue_write(id, std::move(value));
+        if (queued && reactor_ && reactor_->running() && binding) {
+            reactor_->post(binding->endpoint_id, [this, endpoint = binding->endpoint_id] {
+                if (auto flushed = dispatcher_->flush_writes(endpoint); !flushed) {
+                    log_msg(log_, ports::LogLevel::Warn,
+                            "flush_writes " + endpoint + ": " + flushed.error().message);
+                }
+            });
+        }
+        return queued;
+    });
+}
+
+std::size_t ServerRuntime::choose_worker_count() const {
+    const std::size_t endpoints = std::max<std::size_t>(project_->endpoints.size(), 1);
+    std::size_t hw = std::thread::hardware_concurrency();
+    if (hw < 2) {
+        hw = 2;
+    }
+    return std::max<std::size_t>(2, std::min(endpoints, hw));
+}
+
+int ServerRuntime::min_group_period_ms(std::string_view endpoint_id) const {
+    int min_period = 0;
+    for (const auto* group : index_.groups_for_endpoint(endpoint_id)) {
+        if (group == nullptr || group->period_ms < 1) {
+            continue;
+        }
+        if (min_period == 0 || group->period_ms < min_period) {
+            min_period = group->period_ms;
+        }
+    }
+    return min_period > 0 ? min_period : 1000;
+}
+
+void ServerRuntime::tick_endpoint(const std::string& endpoint_id) {
+    auto t_it = transports_.find(endpoint_id);
+    if (t_it == transports_.end() || t_it->second == nullptr) {
+        return;
+    }
+    auto state_it = endpoint_poll_state_.find(endpoint_id);
+    if (state_it == endpoint_poll_state_.end() || state_it->second == nullptr) {
+        return;
+    }
+    auto& state = *state_it->second;
+    if (state.inflight.exchange(true)) {
+        if (metrics_ != nullptr) {
+            metrics_->counter_add("modbus_poll_overruns");
+        }
+        return;
+    }
+    auto& transport = *t_it->second;
+    const auto now = clock_->now_ms();
+    const auto* ep = index_.endpoint(endpoint_id);
+    const int delay_ms = ep != nullptr ? std::max(0, ep->reconnect_delay_ms) : 2000;
+
+    if (!transport.is_connected()) {
+        const auto next = state.next_reconnect_ms.load();
+        if (next != 0 && now < next) {
+            state.inflight.store(false);
+            return;
+        }
+    }
+
+    dispatcher_->poll_due_async(
+        endpoint_id, now,
+        [this, endpoint_id, delay_ms, &state](domain::Result<void> r) {
+            state.inflight.store(false);
+            auto t_it = transports_.find(endpoint_id);
+            if (t_it == transports_.end() || t_it->second == nullptr) {
+                return;
+            }
+            auto& transport = *t_it->second;
+            const auto now = clock_->now_ms();
+
+            if (!transport.is_connected()) {
+                dispatcher_->mark_endpoint_bad(endpoint_id, domain::QualityReason::NoCommunication,
+                                               now);
+                state.next_reconnect_ms.store(now + delay_ms);
+            } else {
+                state.next_reconnect_ms.store(0);
+            }
+
+            if (!r) {
+                log_msg(log_, ports::LogLevel::Warn,
+                        "poll error on " + endpoint_id + ": " + r.error().message);
+                if (r.error().code == domain::ErrorCode::Connection) {
+                    transport.close();
+                    dispatcher_->mark_endpoint_bad(
+                        endpoint_id, domain::QualityReason::NoCommunication, now);
+                    state.next_reconnect_ms.store(now + delay_ms);
+                }
+            }
+
+            if (historian_ != nullptr) {
+                if (auto flushed = historian_->flush(); !flushed) {
+                    log_msg(log_, ports::LogLevel::Warn,
+                            "historian flush: " + flushed.error().message);
+                }
+            }
+        });
+}
+
+domain::Result<void> ServerRuntime::start_reactor(ReactorOptions options) {
+    if (!started_) {
+        if (auto s = start(); !s) {
+            return s;
+        }
+    }
+    if (reactor_ && reactor_->running()) {
+        return {};
+    }
+
+    reactor_ = std::make_unique<adapters::AsioReactor>(choose_worker_count());
+    for (const auto& endpoint : project_->endpoints) {
+        reactor_->ensure_strand(endpoint.id);
+        if (!endpoint_poll_state_.contains(endpoint.id) || !endpoint_poll_state_[endpoint.id]) {
+            endpoint_poll_state_[endpoint.id] = std::make_unique<EndpointPollState>();
+        }
+        auto executor = reactor_->executor_for(endpoint.id);
+        transport_executors_[endpoint.id] = executor;
+        if (auto t = transports_.find(endpoint.id); t != transports_.end() && t->second) {
+            t->second->set_completion_executor(executor.get());
+        }
+    }
+    reactor_->start();
+
+    for (const auto& endpoint : project_->endpoints) {
+        const auto period = std::chrono::milliseconds{min_group_period_ms(endpoint.id)};
+        reactor_->repeat_on_strand(endpoint.id, period, [this, id = endpoint.id] { tick_endpoint(id); });
+    }
+
+    if (options.watch_out != nullptr && options.watch_period.count() > 0) {
+        auto* out = options.watch_out;
+        reactor_->repeat(options.watch_period, [this, out] { write_watchlist(*out); });
+    }
+
+    log_msg(log_, ports::LogLevel::Info,
+            "asio reactor started: " + std::to_string(reactor_->worker_count()) + " workers, " +
+                std::to_string(project_->endpoints.size()) + " endpoint strands");
+    return {};
+}
+
+void ServerRuntime::run_until_stop() {
+    if (reactor_) {
+        reactor_->run_until_stop();
+    }
+}
+
+bool ServerRuntime::reactor_running() const {
+    return reactor_ && reactor_->running();
+}
+
 void ServerRuntime::write_watchlist(std::ostream& out) const {
     out << "tag_id,name,quality,value\n";
     for (const auto& binding : index_.tags()) {
@@ -178,6 +351,17 @@ void ServerRuntime::write_watchlist(std::ostream& out) const {
 }
 
 void ServerRuntime::stop() {
+    if (reactor_) {
+        reactor_->stop();
+        reactor_.reset();
+    }
+    endpoint_poll_state_.clear();
+    for (auto& [id, transport] : transports_) {
+        if (transport) {
+            transport->set_completion_executor(nullptr);
+        }
+    }
+    transport_executors_.clear();
     if (historian_sub_) {
         tag_store_.unsubscribe(*historian_sub_);
         historian_sub_.reset();
@@ -239,7 +423,18 @@ load_project_or_error(const std::string& path, ports::ILog* log) {
 }
 
 TransportFactory default_tcp_transport_factory(ports::IFrameLog* frame_log) {
+    return default_transport_factory(frame_log);
+}
+
+TransportFactory default_transport_factory(ports::IFrameLog* frame_log) {
     return [frame_log](const project::Endpoint& endpoint) -> std::unique_ptr<ports::IModbusTransport> {
+        if (endpoint.transport == project::Transport::Udp) {
+            return std::make_unique<adapters::ModbusUdpTransport>(adapters::ModbusUdpTransportOptions{
+                .response_timeout_ms = endpoint.response_timeout_ms,
+                .frame_log = frame_log,
+                .endpoint_id = endpoint.id,
+            });
+        }
         return std::make_unique<adapters::ModbusTcpTransport>(adapters::ModbusTcpTransportOptions{
             .response_timeout_ms = endpoint.response_timeout_ms,
             .frame_log = frame_log,

@@ -14,12 +14,27 @@ enum class Area { Holding, Input, Coil, Discrete };
 enum class TagType { Bool, UInt16, Int16, UInt32, Int32, Float32, Float64 };
 enum class Priority { Fast, Normal, Slow };
 
+struct OpcUaUser {
+    std::string username;
+    std::string password;
+};
+
 struct OpcUaSettings {
     std::string endpoint_url{"opc.tcp://0.0.0.0:4840"};
     std::string application_name;
     SecurityPolicy security_policy{SecurityPolicy::None};
     SecurityMode security_mode{SecurityMode::None};
     std::string namespace_uri;
+    /// Empty = keep open62541 default (anonymous). Non-empty installs username token AC.
+    std::vector<OpcUaUser> users;
+    /// Default true when no users; load sets false when users / certificate identity present and field omitted.
+    bool allow_anonymous{true};
+    /// Lab only: allow username/password over SecurityMode None (plaintext credentials).
+    bool allow_none_password{false};
+    /// Advertise and accept X509IdentityToken (verified via sessionPKI / --ua-trust).
+    bool allow_certificate_identity{false};
+    /// Lab only: allow X509IdentityToken over SecurityMode None.
+    bool allow_none_certificate{false};
 };
 
 struct Endpoint {

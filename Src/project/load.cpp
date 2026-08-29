@@ -1,4 +1,5 @@
 #include "project/load.hpp"
+#include "project/schema.hpp"
 #include "project/validate.hpp"
 
 #include <json.hpp>
@@ -7,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace opc::project {
 namespace {
@@ -249,6 +251,46 @@ Project parse_project(const json& root, std::vector<Diagnostic>& diags) {
         if (o.contains("namespaceUri") && o["namespaceUri"].is_string()) {
             project.opcua.namespace_uri = o["namespaceUri"].get<std::string>();
         }
+        if (o.contains("users") && o["users"].is_array()) {
+            std::size_t ui = 0;
+            for (const auto& item : o["users"]) {
+                const std::string path = "opcua.users[" + std::to_string(ui++) + "]";
+                OpcUaUser user;
+                if (!item.is_object()) {
+                    add_error(diags, path, "must be object with username/password");
+                    continue;
+                }
+                if (!item.contains("username") || !item["username"].is_string() ||
+                    item["username"].get<std::string>().empty()) {
+                    add_error(diags, path + ".username", "required non-empty string");
+                } else {
+                    user.username = item["username"].get<std::string>();
+                }
+                if (!item.contains("password") || !item["password"].is_string()) {
+                    add_error(diags, path + ".password", "required string");
+                } else {
+                    user.password = item["password"].get<std::string>();
+                }
+                if (!user.username.empty()) {
+                    project.opcua.users.push_back(std::move(user));
+                }
+            }
+        }
+        if (o.contains("allowCertificateIdentity") && o["allowCertificateIdentity"].is_boolean()) {
+            project.opcua.allow_certificate_identity = o["allowCertificateIdentity"].get<bool>();
+        }
+        if (o.contains("allowNoneCertificate") && o["allowNoneCertificate"].is_boolean()) {
+            project.opcua.allow_none_certificate = o["allowNoneCertificate"].get<bool>();
+        }
+        if (o.contains("allowAnonymous") && o["allowAnonymous"].is_boolean()) {
+            project.opcua.allow_anonymous = o["allowAnonymous"].get<bool>();
+        } else if (!project.opcua.users.empty() || project.opcua.allow_certificate_identity) {
+            // Fail-closed when identity is configured: anonymous off unless explicitly enabled.
+            project.opcua.allow_anonymous = false;
+        }
+        if (o.contains("allowNonePassword") && o["allowNonePassword"].is_boolean()) {
+            project.opcua.allow_none_password = o["allowNonePassword"].get<bool>();
+        }
     }
 
     if (!root.contains("endpoints") || !root["endpoints"].is_array() || root["endpoints"].empty()) {
@@ -392,6 +434,55 @@ Project parse_project(const json& root, std::vector<Diagnostic>& diags) {
     return project;
 }
 
+void expand_device_profiles(Project& project) {
+    std::unordered_map<std::string, const DeviceProfile*> by_id;
+    for (const auto& profile : project.device_profiles) {
+        if (!profile.id.empty()) {
+            by_id.emplace(profile.id, &profile);
+        }
+    }
+
+    for (auto& device : project.devices) {
+        if (device.profile_id.empty()) {
+            continue;
+        }
+        const auto it = by_id.find(device.profile_id);
+        if (it == by_id.end()) {
+            continue;  // unknown profileId: validate() reports the error
+        }
+        const DeviceProfile& profile = *it->second;
+        if (profile.tags.empty()) {
+            continue;
+        }
+
+        std::unordered_map<std::string, Tag> overlay;
+        for (const auto& tag : device.tags) {
+            if (!tag.name.empty()) {
+                overlay[tag.name] = tag;
+            }
+        }
+        std::unordered_set<std::string> from_profile;
+        std::vector<Tag> merged;
+        merged.reserve(profile.tags.size() + device.tags.size());
+        for (const auto& profile_tag : profile.tags) {
+            if (!profile_tag.name.empty()) {
+                from_profile.insert(profile_tag.name);
+            }
+            if (!profile_tag.name.empty() && overlay.contains(profile_tag.name)) {
+                merged.push_back(overlay[profile_tag.name]);
+            } else {
+                merged.push_back(profile_tag);
+            }
+        }
+        for (const auto& tag : device.tags) {
+            if (tag.name.empty() || !from_profile.contains(tag.name)) {
+                merged.push_back(tag);
+            }
+        }
+        device.tags = std::move(merged);
+    }
+}
+
 }  // namespace
 
 LoadResult load_json_text(std::string_view text, std::string_view source_name) {
@@ -406,6 +497,8 @@ LoadResult load_json_text(std::string_view text, std::string_view source_name) {
     }
 
     result.project = parse_project(root, result.diagnostics);
+    expand_device_profiles(result.project);
+    append_json_schema_diagnostics(root, source_name, result.diagnostics);
     validate(result.project, result.diagnostics);
 
     result.ok = true;

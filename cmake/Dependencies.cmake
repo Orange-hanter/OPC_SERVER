@@ -14,8 +14,11 @@ function(_opc_find_open62541_target output_variable)
 endfunction()
 
 function(_opc_fetch_open62541)
+  find_package(OpenSSL REQUIRED)
+  # Previous trees cached this as BOOL=OFF; force the STRING OPENSSL value.
+  unset(UA_ENABLE_ENCRYPTION CACHE)
   set(UA_ENABLE_AMALGAMATION OFF CACHE BOOL "" FORCE)
-  set(UA_ENABLE_ENCRYPTION OFF CACHE BOOL "" FORCE)
+  set(UA_ENABLE_ENCRYPTION "OPENSSL" CACHE STRING "" FORCE)
   set(UA_ENABLE_HISTORIZING OFF CACHE BOOL "" FORCE)
   set(UA_ENABLE_PUBSUB OFF CACHE BOOL "" FORCE)
   set(UA_ENABLE_PUBSUB_INFORMATIONMODEL OFF CACHE BOOL "" FORCE)
@@ -72,6 +75,57 @@ function(_opc_fetch_sqlite)
   )
 endfunction()
 
+function(_opc_fetch_asio)
+  FetchContent_Declare(asio
+    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+    GIT_TAG asio-1-32-0
+    GIT_SHALLOW TRUE
+    SYSTEM
+    EXCLUDE_FROM_ALL
+  )
+  FetchContent_GetProperties(asio)
+  if(NOT asio_POPULATED)
+    FetchContent_Populate(asio)
+  endif()
+  add_library(opc_asio INTERFACE)
+  add_library(opc::asio ALIAS opc_asio)
+  target_include_directories(opc_asio SYSTEM INTERFACE
+    "${asio_SOURCE_DIR}/asio/include"
+  )
+  target_compile_definitions(opc_asio INTERFACE
+    ASIO_STANDALONE
+    ASIO_NO_DEPRECATED
+  )
+  find_package(Threads REQUIRED)
+  target_link_libraries(opc_asio INTERFACE Threads::Threads)
+endfunction()
+
+function(_opc_setup_nlohmann_json)
+  if(TARGET nlohmann_json::nlohmann_json)
+    return()
+  endif()
+  add_library(nlohmann_json INTERFACE)
+  add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
+  target_include_directories(nlohmann_json INTERFACE
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/Lib/Json>"
+  )
+endfunction()
+
+function(_opc_fetch_json_schema)
+  _opc_setup_nlohmann_json()
+  set(JSON_VALIDATOR_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(JSON_VALIDATOR_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(JSON_VALIDATOR_INSTALL OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(nlohmann_json_schema_validator
+    GIT_REPOSITORY https://github.com/pboettch/json-schema-validator.git
+    GIT_TAG 2.3.0
+    GIT_SHALLOW TRUE
+    SYSTEM
+    EXCLUDE_FROM_ALL
+  )
+  FetchContent_MakeAvailable(nlohmann_json_schema_validator)
+endfunction()
+
 function(_opc_fetch_observability)
   set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
   set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -87,6 +141,10 @@ function(_opc_fetch_observability)
 
   set(_OPC_SAVED_BUILD_TESTING "${BUILD_TESTING}")
   set(BUILD_TESTING OFF)
+  if(OPC_WITH_OTLP)
+    find_package(CURL REQUIRED)
+    find_package(Protobuf REQUIRED)
+  endif()
   set(WITH_OTLP_GRPC OFF CACHE BOOL "" FORCE)
   set(WITH_OTLP_HTTP ${OPC_WITH_OTLP} CACHE BOOL "" FORCE)
   set(WITH_OTLP_FILE OFF CACHE BOOL "" FORCE)
@@ -122,23 +180,11 @@ function(opc_setup_dependencies)
       "Choose AUTO, CONAN, or FETCHCONTENT.")
   endif()
 
-  if(NOT _provider STREQUAL "FETCHCONTENT")
-    if(_provider STREQUAL "CONAN")
-      find_package(open62541 CONFIG REQUIRED)
-    else()
-      find_package(open62541 CONFIG QUIET)
-    endif()
-    _opc_find_open62541_target(_open62541_target)
-  endif()
-
-  if(NOT _open62541_target)
-    if(_provider STREQUAL "CONAN")
-      message(FATAL_ERROR
-        "Conan's open62541 package did not define a supported CMake target.")
-    endif()
-    _opc_fetch_open62541()
-    _opc_find_open62541_target(_open62541_target)
-  endif()
+  # open62541 is always FetchContent: Conan Center packages (1.5.x) omit
+  # plugin headers such as pki_default.h required for SignAndEncrypt / AcceptAll.
+  # Catch2 still comes from Conan when OPC_DEPENDENCY_PROVIDER=CONAN.
+  _opc_fetch_open62541()
+  _opc_find_open62541_target(_open62541_target)
 
   if(BUILD_TESTING)
     if(NOT _provider STREQUAL "FETCHCONTENT")
@@ -167,6 +213,8 @@ function(opc_setup_dependencies)
   if(NOT SQLite3_FOUND)
     _opc_fetch_sqlite()
   endif()
+  _opc_fetch_asio()
+  _opc_fetch_json_schema()
   _opc_fetch_observability()
 
   set(OPC_OPEN62541_TARGET "${_open62541_target}" PARENT_SCOPE)

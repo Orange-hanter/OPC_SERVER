@@ -6,6 +6,7 @@
 #include "ports/i_metrics.hpp"
 #include "ports/i_modbus_transport.hpp"
 #include "ports/i_tag_store.hpp"
+#include "ports/i_tracer.hpp"
 #include "project/types.hpp"
 
 #include <memory>
@@ -26,6 +27,7 @@ public:
         ports::ITagStore* tag_store{nullptr};
         ports::IClock* clock{nullptr};
         ports::IMetrics* metrics{nullptr};
+        ports::ITracer* tracer{nullptr};
     };
 
     explicit Dispatcher(Dependencies deps);
@@ -38,10 +40,21 @@ public:
     /// Execute due poll groups for endpoint (period-aware).
     domain::Result<void> poll_due(std::string_view endpoint_id, domain::TimestampMs now);
 
+    /// Non-blocking poll: uses transport async_* APIs. `done` runs on the completion
+    /// executor (endpoint strand) when wired, otherwise inline after the last op.
+    void poll_due_async(std::string_view endpoint_id,
+                        domain::TimestampMs now,
+                        ports::ModbusCompletion<void> done);
+
     domain::Result<void> enqueue_write(domain::TagId tag_id, domain::ScalarValue value);
 
     /// Drain write queue for endpoint (call on endpoint strand before/with poll).
     domain::Result<void> flush_writes(std::string_view endpoint_id);
+
+    /// Publish Bad/NoCommunication for every tag on the endpoint (disconnect / connect fail).
+    void mark_endpoint_bad(std::string_view endpoint_id,
+                           domain::QualityReason reason,
+                           domain::TimestampMs now);
 
 private:
     domain::Result<void> poll_group(const project::PollGroup& group,
@@ -52,7 +65,16 @@ private:
                                   ports::IModbusTransport& transport,
                                   domain::TimestampMs now);
 
+    void poll_tag_async(TagBinding binding,
+                        ports::IModbusTransport& transport,
+                        domain::TimestampMs now,
+                        ports::ModbusCompletion<void> done);
+
+    [[nodiscard]] std::unique_ptr<ports::ISpan> start_span(std::string_view name) const;
+
     Dependencies deps_;
+    /// Protects transports_ / last_poll_ms_ across endpoint strands (ADR-0002).
+    mutable std::mutex state_mutex_;
     std::unordered_map<std::string, ports::IModbusTransport*> transports_;
     std::unordered_map<std::string, domain::TimestampMs> last_poll_ms_;
 

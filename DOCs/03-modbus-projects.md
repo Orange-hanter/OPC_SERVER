@@ -11,7 +11,7 @@
 Проект объединяет:
 
 1. Метаданные (имя площадки, версия схемы, описание).
-2. Сетевые endpoints (host, port, таймауты, reconnect).
+2. Сетевые endpoints (host, port, `transport` tcp/udp, таймауты, reconnect).
 3. Устройства (slave id, профиль, комментарии).
 4. Группы опроса (период, приоритет, список блоков регистров).
 5. Теги (имя, тип, адрес, byte order, scale/offset, единица, writable, путь в OPC UA).
@@ -58,26 +58,38 @@ Project
 
 1. **Именованные теги и иерархия** — SCADA видит `Plant/...`, а не `HR[40001]`.
 2. **Группы опроса** — быстрые и медленные точки без смешивания периодов.
-3. **Профили устройств** — шаблон «счётчик X / ПЧ Y» с типовой картой; instance задаёт только endpoint и unit id.
+3. **Профили устройств** — шаблон «счётчик X / ПЧ Y» с типовой картой; instance задаёт только endpoint и unit id. При load теги профиля раскрываются (union, instance побеждает по имени).
 4. **Единицы и scale/offset** — инженерные величины сразу в TagStore/UA.
 5. **Комментарии и `description`** — документация карты рядом с адресами.
-6. **Импорт** (спецификация tooling): CSV/Excel колонок `name,area,address,type,byteOrder,scale,offset,unit,writable` → фрагмент проекта.
+6. **Импорт** — `opc-map import-csv` колонок `name,area,address,type,byteOrder,scale,offset,unit,writable` → фрагмент проекта.
 7. **Валидация по JSON Schema** — ошибки до запуска на объекте.
 8. **`opc-map doctor`** — пересечения регистров, дыры в блоках, теги без группы, writable без FC16/FC06 и т.п.
+9. **`opc-map gen-nodeset`** — фрагмент UA NodeSet2 из `nodePath` для просмотра/импорта в UA-инструменты.
 
-## CLI `opc-map` (спецификация инструмента)
+## CLI `opc-map`
 
-Код инструмента появится по roadmap; контракт команд:
+Коды выхода: `0` — ok, `1` — ошибки валидации/doctor, `2` — ошибка ввода/файла.
 
-| Команда | Поведение |
-|---------|-----------|
-| `opc-map validate <project>` | Проверка JSON Schema + семантических правил |
-| `opc-map doctor <project>` | Диагностика пересечений, производительности блоков, предупреждения |
-| `opc-map gen-nodeset <project> -o out.xml` | Генерация фрагмента узлов / dump дерева UA |
-| `opc-map import-csv <csv> -o fragment.json` | Импорт таблицы регистров |
-| `opc-map migrate-legacy config.json -o out.modbusproj.json` | Миграция со старого [`config.json`](config.json) |
+| Команда | Состояние | Поведение |
+|---------|-----------|-----------|
+| `opc-map validate <project>` | Есть | JSON Schema draft 2020-12 engine + semantic checks |
+| `opc-map doctor <project>` | Есть | Пересечения, дыры, unpolled tags, sparse/gappy блоки |
+| `opc-map migrate-legacy config.json -o out.modbusproj.json` | Есть | Миграция со старого [`config.json`](config.json) |
+| `opc-map gen-nodeset <project> -o out.xml` | Есть | Фрагмент UA NodeSet2: Folders (`i=61`) и Variables (`i=63`) из `nodePath`, корень Objects (`i=85`) |
+| `opc-map import-csv <csv> -o fragment.json` | Есть | Импорт таблицы регистров в loadable draft проекта |
 
-Коды выхода: `0` — ok, `1` — ошибки валидации, `2` — ошибка ввода/файла.
+Флаги `import-csv`: `--device-id`, `--endpoint-id`, `--unit-id`, `--group`. Обязательные колонки CSV: `name,area,address,type,byteOrder,scale,offset,unit,writable`. Опционально: `nodePath`, `group`, `description`, `quantity`. Пустой `nodePath` → `Plant/<name>`. Черновик содержит placeholder endpoint `127.0.0.1:502`, одно устройство и одну poll group со всеми именами тегов — его можно сразу прогнать через `opc-map validate`.
+
+Пример таблицы: [examples/tank-registers.csv](examples/tank-registers.csv).
+
+### Профили устройств
+
+`deviceProfiles[]` — шаблон карты. При **load** (до semantic validate) runtime раскрывает профиль:
+
+- если у instance `tags` пустой — копируются теги профиля;
+- если непустой — **union** по `name`, поля instance побеждают.
+
+Instance может задать только `endpointId` + `unitId` + `profileId`. JSON Schema по-прежнему видит исходный файл (без expand). Studio редактирует JSON as-is; `opc-map validate` / `OPC_SERVER` работают уже с объединёнными тегами.
 
 ## Миграция с `DOCs/config.json`
 

@@ -296,4 +296,15 @@ ReplayModbusTransport::write_single_coil(std::uint8_t, std::uint16_t, bool) {
     return {};
 }
 
+domain::Result<void>
+ReplayModbusTransport::write_multiple_coils(std::uint8_t,
+                                            std::uint16_t,
+                                            std::span<const std::uint8_t>) {
+    auto pdu = next_pdu();
+    if (!pdu) {
+        return std::unexpected(pdu.error());
+    }
+    return {};
+}
+
 }  // namespace opc::adapters

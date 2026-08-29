@@ -39,7 +39,7 @@ ctest --preset dev
 
 ```bash
 cmake --workflow --preset asan  # AddressSanitizer + UndefinedBehaviorSanitizer
-cmake --workflow --preset tsan  # ThreadSanitizer (TagStore / Dispatcher)
+cmake --workflow --preset tsan  # ThreadSanitizer (core/runtime tests)
 cmake --preset coverage && cmake --build --preset coverage && ./scripts/coverage.sh
 cmake --preset unity            # unity build и precompiled headers
 cmake --build --preset unity
@@ -61,13 +61,13 @@ clangd, clang-tidy и многие IDE.
 | `OPC_ENABLE_WARNINGS` | `ON` | строгий переносимый набор warnings |
 | `OPC_WARNINGS_AS_ERRORS` | `OFF` | добавить `-Werror` / `/WX` только своим целям |
 | `OPC_ENABLE_SANITIZERS` | `OFF` | ASan + UBSan для GCC/Clang |
-| `OPC_ENABLE_TSAN` | `OFF` | ThreadSanitizer (несовместим с ASan) |
+| `OPC_ENABLE_TSAN` | `OFF` | ThreadSanitizer (не вместе с ASan) |
 | `OPC_ENABLE_COVERAGE` | `OFF` | `--coverage` для `scripts/coverage.sh` |
 | `OPC_ENABLE_FUZZERS` | `OFF` | libFuzzer-таргеты (Clang) |
 | `OPC_ENABLE_IPO` | `OFF` | IPO/LTO после `check_ipo_supported()` |
 | `OPC_ENABLE_UNITY_BUILD` | `OFF` | объединять `.cpp` своих целей |
 | `OPC_ENABLE_PCH` | `OFF` | использовать `target_precompile_headers()` |
-| `OPC_ENABLE_CLANG_TIDY` | `OFF` | запускать clang-tidy из compile pipeline |
+| `OPC_WITH_OTLP` | `OFF` (ON in preset `ci`) | OTLP/HTTP metrics+traces exporters (protobuf, libcurl) |
 | `OPC_DEPENDENCY_PROVIDER` | `AUTO` | `AUTO`, `CONAN` или `FETCHCONTENT` |
 
 Пример точечной настройки:
@@ -88,14 +88,15 @@ cmake --preset dev \
 ## Два способа получать зависимости
 
 `AUTO` сначала ищет config packages через `find_package()`. Если их нет,
-open62541 и Catch2 загружаются через `FetchContent`. Полностью автономный режим:
+Catch2 загружается через `FetchContent`. open62541 **всегда** FetchContent
+(OpenSSL encryption + `plugin/pki_default.h`). Полностью автономный режим:
 
 ```bash
 cmake --preset dev -DOPC_DEPENDENCY_PROVIDER=FETCHCONTENT
 ```
 
-`CONAN` запрещает fallback, поэтому ошибка интеграции обнаруживается сразу.
-Нужен Conan 2:
+`CONAN` требует Catch2 из Conan (ошибка интеграции обнаруживается сразу);
+open62541 по-прежнему FetchContent. Нужен Conan 2:
 
 ```bash
 pipx install conan
@@ -105,8 +106,8 @@ conan build . -s build_type=Debug -s compiler.cppstd=23 --build=missing
 ```
 
 `CMakeToolchain` передаёт CMake сведения о compiler/runtime, а `CMakeDeps`
-создаёт config packages для `find_package(open62541)` и
-`find_package(Catch2)`. Recipe также умеет собрать устанавливаемый пакет:
+создаёт config package для `find_package(Catch2)`. Recipe также умеет собрать
+устанавливаемый пакет:
 
 ```bash
 conan create . -s build_type=Release -s compiler.cppstd=23 --build=missing

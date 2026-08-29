@@ -13,15 +13,26 @@ add_executable(opc_tests
   component/test_frame_log.cpp
   component/test_frame_replay.cpp
   component/test_spdlog_otel.cpp
+  component/test_asio_reactor.cpp
   contract/test_project.cpp
   contract/test_doctor.cpp
   contract/test_fixtures.cpp
   contract/test_opc_map_cli.cpp
+  contract/test_import_csv.cpp
+  contract/test_gen_nodeset.cpp
+  contract/test_runtime_doctor.cpp
   integration/test_opc_ua_read.cpp
   integration/test_opc_ua_write_subs.cpp
   integration/test_modbus_tcp.cpp
+  integration/test_modbus_udp.cpp
+  integration/test_modbus_async.cpp
+  integration/test_ua_encryption.cpp
+  integration/test_ua_username.cpp
+  integration/test_ua_x509.cpp
   lab/test_e2e_mvp.cpp
   lab/test_soak.cpp
+  lab/test_otlp_live.cpp
+  lab/test_load_stand.cpp
 )
 
 if(TARGET opc::monitor_client)

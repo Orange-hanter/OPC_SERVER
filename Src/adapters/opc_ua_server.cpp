@@ -1,13 +1,24 @@
 #include "adapters/opc_ua_server.hpp"
+#include "adapters/ua_pki.hpp"
 
 #include "domain/tag_value_util.hpp"
 
+#include <open62541/plugin/accesscontrol.h>
+#include <open62541/plugin/accesscontrol_default.h>
+#include <open62541/plugin/pki_default.h>
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
+#ifdef UA_ENABLE_ENCRYPTION
+#include <open62541/config.h>
+#endif
 
 #include <charconv>
 #include <chrono>
+#include <fstream>
+#include <iterator>
+#include <mutex>
 #include <sstream>
+#include <unordered_map>
 #include <variant>
 
 namespace opc::adapters {
@@ -31,6 +42,350 @@ void log_msg(ports::ILog* log, ports::LogLevel level, std::string_view msg) {
     using namespace std::chrono;
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
+
+void keep_security_endpoints(UA_ServerConfig* config,
+                             UA_MessageSecurityMode mode,
+                             std::string_view policy_uri) {
+    size_t write = 0;
+    for (size_t i = 0; i < config->endpointsSize; ++i) {
+        UA_EndpointDescription& ep = config->endpoints[i];
+        UA_String want = UA_STRING_ALLOC(std::string(policy_uri).c_str());
+        const bool keep =
+            ep.securityMode == mode && UA_String_equal(&ep.securityPolicyUri, &want);
+        UA_String_clear(&want);
+        if (keep) {
+            if (write != i) {
+                config->endpoints[write] = ep;
+                UA_EndpointDescription_init(&ep);
+            }
+            ++write;
+        } else {
+            UA_EndpointDescription_clear(&ep);
+        }
+    }
+    config->endpointsSize = write;
+}
+
+[[nodiscard]] domain::Result<void> configure_session_pki_for_identity(
+    UA_ServerConfig* config,
+    const project::OpcUaSettings& opcua,
+    const OpcUaSecurityOptions& security,
+    ports::ILog* log) {
+    if (!opcua.allow_certificate_identity) {
+        // Username-only / anonymous AC must not advertise X509IdentityToken via leftover
+        // sessionPKI from setMinimal / setDefaultWithSecurityPolicies.
+        config->sessionPKI.verifyCertificate = nullptr;
+        return {};
+    }
+
+    if (opcua.security_mode == project::SecurityMode::None && !opcua.allow_none_certificate) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::InvalidArgument,
+            "X509IdentityToken with SecurityMode None requires opcua.allowNoneCertificate "
+            "or --ua-allow-none-certificate",
+            "adapters.opcua",
+            false});
+    }
+
+#ifdef UA_ENABLE_ENCRYPTION
+    if (opcua.security_mode == project::SecurityMode::None) {
+        if (security.accept_untrusted) {
+            UA_CertificateVerification_AcceptAll(&config->sessionPKI);
+            log_msg(log, ports::LogLevel::Warn,
+                    "X509IdentityToken over None with AcceptAll sessionPKI (lab)");
+            return {};
+        }
+        if (security.trust_list.empty()) {
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::InvalidArgument,
+                "X509IdentityToken over None requires --ua-trust (or --ua-accept-untrusted)",
+                "adapters.opcua",
+                false});
+        }
+        std::vector<std::vector<std::uint8_t>> trust_store;
+        std::vector<UA_ByteString> trust_list;
+        for (const auto& path : security.trust_list) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) {
+                return std::unexpected(domain::Error{
+                    domain::ErrorCode::InvalidArgument,
+                    "cannot read --ua-trust certificate for sessionPKI",
+                    "adapters.opcua",
+                    false});
+            }
+            trust_store.emplace_back(std::istreambuf_iterator<char>(in),
+                                     std::istreambuf_iterator<char>());
+        }
+        trust_list.resize(trust_store.size());
+        for (std::size_t i = 0; i < trust_store.size(); ++i) {
+            trust_list[i].length = trust_store[i].size();
+            trust_list[i].data = trust_store[i].empty() ? nullptr : trust_store[i].data();
+        }
+        std::vector<std::vector<std::uint8_t>> revocation_store;
+        std::vector<UA_ByteString> revocation_list;
+        for (const auto& path : security.revocation_list) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) {
+                return std::unexpected(domain::Error{
+                    domain::ErrorCode::InvalidArgument,
+                    "cannot read --ua-crl for sessionPKI",
+                    "adapters.opcua",
+                    false});
+            }
+            revocation_store.emplace_back(std::istreambuf_iterator<char>(in),
+                                          std::istreambuf_iterator<char>());
+        }
+        revocation_list.resize(revocation_store.size());
+        for (std::size_t i = 0; i < revocation_store.size(); ++i) {
+            revocation_list[i].length = revocation_store[i].size();
+            revocation_list[i].data =
+                revocation_store[i].empty() ? nullptr : revocation_store[i].data();
+        }
+        const auto st = UA_CertificateVerification_Trustlist(
+            &config->sessionPKI, trust_list.empty() ? nullptr : trust_list.data(), trust_list.size(),
+            nullptr, 0, revocation_list.empty() ? nullptr : revocation_list.data(),
+            revocation_list.size());
+        if (st != UA_STATUSCODE_GOOD) {
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::Internal, "sessionPKI Trustlist install failed",
+                "adapters.opcua", false});
+        }
+        log_msg(log, ports::LogLevel::Warn,
+                "X509IdentityToken allowed over SecurityMode None (allowNoneCertificate)");
+        return {};
+    }
+
+    if (security.accept_untrusted) {
+        log_msg(log, ports::LogLevel::Warn,
+                "X509IdentityToken enabled with AcceptAll sessionPKI (lab); any user cert passes");
+    } else if (security.trust_list.empty()) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::InvalidArgument,
+            "X509IdentityToken requires --ua-trust (or --ua-accept-untrusted for lab)",
+            "adapters.opcua",
+            false});
+    } else if (config->sessionPKI.verifyCertificate == nullptr) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::Internal,
+            "sessionPKI missing after encrypted config; cannot enable X509IdentityToken",
+            "adapters.opcua",
+            false});
+    }
+    return {};
+#else
+    (void)security;
+    (void)log;
+    return std::unexpected(domain::Error{
+        domain::ErrorCode::NotImplemented,
+        "X509IdentityToken requires UA_ENABLE_ENCRYPTION",
+        "adapters.opcua",
+        false});
+#endif
+}
+
+[[nodiscard]] domain::Result<void> apply_identity_access_control(
+    UA_ServerConfig* config, const project::OpcUaSettings& opcua, ports::ILog* log) {
+    const bool customize = !opcua.users.empty() || !opcua.allow_anonymous ||
+                           opcua.allow_certificate_identity;
+    if (!customize) {
+        return {};
+    }
+
+    if (!opcua.users.empty() && opcua.security_mode == project::SecurityMode::None &&
+        !opcua.allow_none_password) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::InvalidArgument,
+            "username/password with SecurityMode None requires opcua.allowNonePassword "
+            "or --ua-allow-none-password (credentials would be plaintext)",
+            "adapters.opcua",
+            false});
+    }
+
+    if (opcua.allow_certificate_identity && config->sessionPKI.verifyCertificate == nullptr) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::Internal,
+            "X509IdentityToken enabled but sessionPKI.verifyCertificate is unset",
+            "adapters.opcua",
+            false});
+    }
+
+    std::vector<UA_UsernamePasswordLogin> logins;
+    logins.reserve(opcua.users.size());
+    for (const auto& user : opcua.users) {
+        UA_UsernamePasswordLogin entry{};
+        entry.username = UA_STRING_ALLOC(user.username.c_str());
+        entry.password = UA_STRING_ALLOC(user.password.c_str());
+        logins.push_back(entry);
+    }
+
+    const UA_StatusCode status = UA_AccessControl_default(
+        config, opcua.allow_anonymous ? UA_TRUE : UA_FALSE, nullptr, logins.size(),
+        logins.empty() ? nullptr : logins.data());
+
+    for (auto& entry : logins) {
+        UA_String_clear(&entry.username);
+        UA_String_clear(&entry.password);
+    }
+
+    if (status != UA_STATUSCODE_GOOD) {
+        return std::unexpected(domain::Error{domain::ErrorCode::Internal,
+                                             "UA_AccessControl_default failed",
+                                             "adapters.opcua",
+                                             false});
+    }
+
+    if (!opcua.users.empty() && opcua.security_mode == project::SecurityMode::None &&
+        opcua.allow_none_password) {
+        config->allowNonePolicyPassword = true;
+        log_msg(log, ports::LogLevel::Warn,
+                "username/password allowed over SecurityMode None (allowNonePassword)");
+    }
+
+    std::string msg = "AccessControl:";
+    if (opcua.allow_certificate_identity) {
+        msg += " X509IdentityToken";
+    }
+    if (!opcua.users.empty()) {
+        msg += " UsernameIdentityToken";
+    }
+    msg += opcua.allow_anonymous ? " (anonymous allowed)" : " (anonymous denied)";
+    log_msg(log, ports::LogLevel::Info, msg);
+    return {};
+}
+
+struct SessionHooks {
+    opc::adapters::OpcUaServer* self{nullptr};
+    UA_StatusCode (*orig_activate)(UA_Server*,
+                                   UA_AccessControl*,
+                                   const UA_EndpointDescription*,
+                                   const UA_ByteString*,
+                                   const UA_NodeId*,
+                                   const UA_ExtensionObject*,
+                                   void**){nullptr};
+    void (*orig_close)(UA_Server*, UA_AccessControl*, const UA_NodeId*, void*){nullptr};
+};
+
+std::mutex g_session_hooks_mu;
+std::unordered_map<UA_Server*, SessionHooks> g_session_hooks;
+
+[[nodiscard]] std::uint32_t session_key(const UA_NodeId* id) {
+    if (id == nullptr) {
+        return 0;
+    }
+    if (id->identifierType == UA_NODEIDTYPE_NUMERIC) {
+        return id->identifier.numeric;
+    }
+    return static_cast<std::uint32_t>(id->identifierType) << 24;
+}
+
+UA_StatusCode activate_session_hook(UA_Server* server,
+                                    UA_AccessControl* ac,
+                                    const UA_EndpointDescription* endpoint_description,
+                                    const UA_ByteString* remote_certificate,
+                                    const UA_NodeId* session_id,
+                                    const UA_ExtensionObject* user_identity_token,
+                                    void** session_context) {
+    SessionHooks hooks;
+    {
+        std::lock_guard lock(g_session_hooks_mu);
+        const auto it = g_session_hooks.find(server);
+        if (it != g_session_hooks.end()) {
+            hooks = it->second;
+        }
+    }
+    UA_StatusCode status = UA_STATUSCODE_GOOD;
+    if (hooks.orig_activate != nullptr) {
+        status = hooks.orig_activate(server, ac, endpoint_description, remote_certificate, session_id,
+                                     user_identity_token, session_context);
+    }
+    if (status == UA_STATUSCODE_GOOD && hooks.self != nullptr) {
+        hooks.self->note_session_activate(session_key(session_id));
+    }
+    return status;
+}
+
+void close_session_hook(UA_Server* server,
+                        UA_AccessControl* ac,
+                        const UA_NodeId* session_id,
+                        void* session_context) {
+    SessionHooks hooks;
+    {
+        std::lock_guard lock(g_session_hooks_mu);
+        const auto it = g_session_hooks.find(server);
+        if (it != g_session_hooks.end()) {
+            hooks = it->second;
+        }
+    }
+    if (hooks.orig_close != nullptr) {
+        hooks.orig_close(server, ac, session_id, session_context);
+    }
+    if (hooks.self != nullptr) {
+        hooks.self->note_session_close(session_key(session_id));
+    }
+}
+
+void install_session_hooks(UA_Server* server, opc::adapters::OpcUaServer* self) {
+    UA_ServerConfig* config = UA_Server_getConfig(server);
+    if (config == nullptr) {
+        return;
+    }
+    std::lock_guard lock(g_session_hooks_mu);
+    g_session_hooks[server] = SessionHooks{
+        .self = self,
+        .orig_activate = config->accessControl.activateSession,
+        .orig_close = config->accessControl.closeSession,
+    };
+    config->accessControl.activateSession = &activate_session_hook;
+    config->accessControl.closeSession = &close_session_hook;
+}
+
+void uninstall_session_hooks(UA_Server* server) {
+    UA_ServerConfig* config = server != nullptr ? UA_Server_getConfig(server) : nullptr;
+    std::lock_guard lock(g_session_hooks_mu);
+    const auto it = g_session_hooks.find(server);
+    if (it == g_session_hooks.end()) {
+        return;
+    }
+    // Restore AccessControl callbacks before erase so a late ActivateSession cannot
+    // see missing hooks and skip username checks (fail-open).
+    if (config != nullptr) {
+        if (it->second.orig_activate != nullptr) {
+            config->accessControl.activateSession = it->second.orig_activate;
+        }
+        if (it->second.orig_close != nullptr) {
+            config->accessControl.closeSession = it->second.orig_close;
+        }
+    }
+    g_session_hooks.erase(it);
+}
+
+}  // namespace
+
+void OpcUaServer::note_session_activate(std::uint32_t session_id) {
+    std::size_t count = 0;
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        active_sessions_.insert(session_id);
+        count = active_sessions_.size();
+    }
+    if (metrics_ != nullptr) {
+        metrics_->gauge_set("ua_sessions", static_cast<double>(count));
+    }
+}
+
+void OpcUaServer::note_session_close(std::uint32_t session_id) {
+    std::size_t count = 0;
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        active_sessions_.erase(session_id);
+        count = active_sessions_.size();
+    }
+    if (metrics_ != nullptr) {
+        metrics_->gauge_set("ua_sessions", static_cast<double>(count));
+    }
+}
+
+namespace {
 
 [[nodiscard]] std::uint16_t parse_endpoint_port(std::string_view url, std::uint16_t fallback) {
     const auto colon = url.rfind(':');
@@ -326,7 +681,8 @@ UA_StatusCode data_source_write(UA_Server* /*server*/,
 
 }  // namespace
 
-OpcUaServer::OpcUaServer(ports::ILog* log) : log_(log) {}
+OpcUaServer::OpcUaServer(ports::ILog* log, ports::IMetrics* metrics, OpcUaSecurityOptions security)
+    : log_(log), metrics_(metrics), security_(std::move(security)) {}
 
 OpcUaServer::~OpcUaServer() {
     stop();
@@ -342,10 +698,13 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
     }
     project_ = std::move(project);
 
-    if (project_->opcua.security_policy != project::SecurityPolicy::None ||
-        project_->opcua.security_mode != project::SecurityMode::None) {
-        log_msg(log_, ports::LogLevel::Warn,
-                "security Sign/Encrypt requested but stage-3 uses None; continuing with None");
+    const bool want_secure = project_->opcua.security_mode != project::SecurityMode::None;
+    if (want_secure && !ua_encryption_built()) {
+        return std::unexpected(domain::Error{
+            domain::ErrorCode::NotImplemented,
+            "project requests Sign/Encrypt but open62541 was built without UA_ENABLE_ENCRYPTION",
+            "adapters.opcua",
+            false});
     }
 
     server_ = UA_Server_new();
@@ -375,12 +734,112 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
         return rest.empty() || rest == "0.0.0.0" || rest == "[::]" || rest == "::";
     }();
 
-    auto status = UA_ServerConfig_setMinimal(config, port, nullptr);
+    auto status = UA_STATUSCODE_GOOD;
+    if (!want_secure) {
+        status = UA_ServerConfig_setMinimal(config, port, nullptr);
+    } else {
+#ifdef UA_ENABLE_ENCRYPTION
+        const auto uri = project_->opcua.namespace_uri.empty() ? std::string{"urn:opc-server:application"}
+                                                               : project_->opcua.namespace_uri;
+        auto material = load_or_create_application_cert(uri, security_, log_);
+        if (!material) {
+            UA_Server_delete(server_);
+            server_ = nullptr;
+            return std::unexpected(material.error());
+        }
+        UA_ByteString certificate{};
+        certificate.length = material->first.size();
+        certificate.data = material->first.data();
+        UA_ByteString private_key{};
+        private_key.length = material->second.size();
+        private_key.data = material->second.data();
+
+        std::vector<std::vector<std::uint8_t>> trust_store;
+        std::vector<UA_ByteString> trust_list;
+        bool trust_ok = true;
+        for (const auto& path : security_.trust_list) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) {
+                trust_ok = false;
+                break;
+            }
+            trust_store.emplace_back(std::istreambuf_iterator<char>(in),
+                                     std::istreambuf_iterator<char>());
+        }
+        if (!trust_ok) {
+            UA_Server_delete(server_);
+            server_ = nullptr;
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::InvalidArgument,
+                "cannot read --ua-trust certificate",
+                "adapters.opcua",
+                false});
+        }
+        trust_list.resize(trust_store.size());
+        for (std::size_t i = 0; i < trust_store.size(); ++i) {
+            trust_list[i].length = trust_store[i].size();
+            trust_list[i].data = trust_store[i].empty() ? nullptr : trust_store[i].data();
+        }
+
+        std::vector<std::vector<std::uint8_t>> revocation_store;
+        std::vector<UA_ByteString> revocation_list;
+        bool revocation_ok = true;
+        for (const auto& path : security_.revocation_list) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) {
+                revocation_ok = false;
+                break;
+            }
+            revocation_store.emplace_back(std::istreambuf_iterator<char>(in),
+                                          std::istreambuf_iterator<char>());
+        }
+        if (!revocation_ok) {
+            UA_Server_delete(server_);
+            server_ = nullptr;
+            return std::unexpected(domain::Error{
+                domain::ErrorCode::InvalidArgument,
+                "cannot read --ua-crl revocation list",
+                "adapters.opcua",
+                false});
+        }
+        revocation_list.resize(revocation_store.size());
+        for (std::size_t i = 0; i < revocation_store.size(); ++i) {
+            revocation_list[i].length = revocation_store[i].size();
+            revocation_list[i].data =
+                revocation_store[i].empty() ? nullptr : revocation_store[i].data();
+        }
+
+        status = UA_ServerConfig_setDefaultWithSecurityPolicies(
+            config, port, &certificate, &private_key,
+            trust_list.empty() ? nullptr : trust_list.data(), trust_list.size(),
+            nullptr, 0,
+            revocation_list.empty() ? nullptr : revocation_list.data(), revocation_list.size());
+        if (status == UA_STATUSCODE_GOOD) {
+            if (security_.accept_untrusted) {
+                UA_CertificateVerification_AcceptAll(&config->secureChannelPKI);
+                UA_CertificateVerification_AcceptAll(&config->sessionPKI);
+            }
+            const auto mode = static_cast<UA_MessageSecurityMode>(
+                ua_message_security_mode(project_->opcua.security_mode));
+            const char* policy = ua_security_policy_uri(project_->opcua.security_policy);
+            if (project_->opcua.security_policy == project::SecurityPolicy::None) {
+                policy = ua_security_policy_uri(project::SecurityPolicy::Basic256Sha256);
+            }
+            keep_security_endpoints(config, mode, policy);
+            if (config->endpointsSize == 0) {
+                status = UA_STATUSCODE_BADSECURITYCHECKSFAILED;
+            }
+        }
+#else
+        status = UA_STATUSCODE_BADINTERNALERROR;
+#endif
+    }
     if (status != UA_STATUSCODE_GOOD) {
         UA_Server_delete(server_);
         server_ = nullptr;
         return std::unexpected(domain::Error{domain::ErrorCode::Internal,
-                                             "UA_ServerConfig_setMinimal failed",
+                                             want_secure ? "UA encrypted config failed"
+                                                         : "UA_ServerConfig_setMinimal failed",
                                              "adapters.opcua",
                                              false});
     }
@@ -411,6 +870,25 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
         config->serverUrlsSize = 1;
     }
 
+    if (auto session_pki =
+            configure_session_pki_for_identity(config, project_->opcua, security_, log_);
+        !session_pki) {
+        UA_Server_delete(server_);
+        server_ = nullptr;
+        return session_pki;
+    }
+
+    if (auto identity = apply_identity_access_control(config, project_->opcua, log_); !identity) {
+        UA_Server_delete(server_);
+        server_ = nullptr;
+        return identity;
+    }
+
+    install_session_hooks(server_, this);
+    if (metrics_ != nullptr) {
+        metrics_->gauge_set("ua_sessions", 0.0);
+    }
+
     const auto& app_name = project_->opcua.application_name.empty() ? project_->name
                                                                     : project_->opcua.application_name;
     UA_LocalizedText_clear(&config->applicationDescription.applicationName);
@@ -425,6 +903,7 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
 
     status = UA_Server_run_startup(server_);
     if (status != UA_STATUSCODE_GOOD) {
+        uninstall_session_hooks(server_);
         UA_Server_delete(server_);
         server_ = nullptr;
         return std::unexpected(domain::Error{domain::ErrorCode::Internal,
@@ -437,6 +916,7 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
                                                                : project_->opcua.namespace_uri.c_str();
     ns_index_ = UA_Server_addNamespace(server_, ns_uri);
     if (auto diagnostics = add_diagnostics(); !diagnostics) {
+        uninstall_session_hooks(server_);
         UA_Server_run_shutdown(server_);
         UA_Server_delete(server_);
         server_ = nullptr;
@@ -460,6 +940,7 @@ void OpcUaServer::stop() {
     if (server_ == nullptr) {
         return;
     }
+    uninstall_session_hooks(server_);
     UA_Server_run_shutdown(server_);
     UA_Server_delete(server_);
     server_ = nullptr;
@@ -475,6 +956,10 @@ void OpcUaServer::stop() {
         bad_count_ = 0;
         last_error_.clear();
         diagnostics_dirty_ = false;
+        active_sessions_.clear();
+    }
+    if (metrics_ != nullptr) {
+        metrics_->gauge_set("ua_sessions", 0.0);
     }
     diagnostics_state_node_ = 0;
     diagnostics_good_node_ = 0;
@@ -814,40 +1299,63 @@ domain::Result<void> OpcUaServer::add_diagnostics() {
 }
 
 void OpcUaServer::note_tag_quality(domain::TagId id, const domain::TagValue& value) {
-    std::lock_guard lock(diagnostics_mutex_);
-    const auto decrement = [this](domain::Quality quality) {
-        switch (quality) {
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        const auto decrement = [this](domain::Quality quality) {
+            switch (quality) {
+            case domain::Quality::Good:
+                --good_count_;
+                break;
+            case domain::Quality::Uncertain:
+                --uncertain_count_;
+                break;
+            case domain::Quality::Bad:
+                --bad_count_;
+                break;
+            }
+        };
+        if (const auto previous = latest_quality_.find(id); previous != latest_quality_.end()) {
+            decrement(previous->second);
+            previous->second = value.quality;
+        } else {
+            latest_quality_.emplace(id, value.quality);
+        }
+        switch (value.quality) {
         case domain::Quality::Good:
-            --good_count_;
+            ++good_count_;
             break;
         case domain::Quality::Uncertain:
-            --uncertain_count_;
+            ++uncertain_count_;
             break;
         case domain::Quality::Bad:
-            --bad_count_;
+            ++bad_count_;
+            last_error_ = "Tag " + std::to_string(id) + ": " +
+                          std::string(quality_reason_name(value.reason));
             break;
         }
-    };
-    if (const auto previous = latest_quality_.find(id); previous != latest_quality_.end()) {
-        decrement(previous->second);
-        previous->second = value.quality;
-    } else {
-        latest_quality_.emplace(id, value.quality);
+        diagnostics_dirty_ = true;
     }
-    switch (value.quality) {
-    case domain::Quality::Good:
-        ++good_count_;
-        break;
-    case domain::Quality::Uncertain:
-        ++uncertain_count_;
-        break;
-    case domain::Quality::Bad:
-        ++bad_count_;
-        last_error_ = "Tag " + std::to_string(id) + ": " +
-                      std::string(quality_reason_name(value.reason));
-        break;
+    publish_quality_metrics();
+}
+
+void OpcUaServer::publish_quality_metrics() {
+    if (metrics_ == nullptr) {
+        return;
     }
-    diagnostics_dirty_ = true;
+    std::uint64_t good = 0;
+    std::uint64_t uncertain = 0;
+    std::uint64_t bad = 0;
+    {
+        std::lock_guard lock(diagnostics_mutex_);
+        good = good_count_;
+        uncertain = uncertain_count_;
+        bad = bad_count_;
+    }
+    const auto total = good + uncertain + bad;
+    metrics_->gauge_set("tag_quality.good", static_cast<double>(good));
+    metrics_->gauge_set("tag_quality.uncertain", static_cast<double>(uncertain));
+    metrics_->gauge_set("tag_quality.bad", static_cast<double>(bad));
+    metrics_->gauge_set("tag_quality", total == 0 ? 0.0 : static_cast<double>(good) / static_cast<double>(total));
 }
 
 void OpcUaServer::write_diagnostics() {

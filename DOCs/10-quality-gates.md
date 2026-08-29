@@ -13,7 +13,7 @@
 | Build | `cmake --build --preset dev` |
 | Unit/component/contract/integration | `ctest --preset dev --output-on-failure` — 100% pass (без `OPC_E2E`) |
 | Layer lint | `python3 scripts/layer-lint.py` — 0 нарушений hexagon |
-| CI | Workflow **CI** green on PR (GCC build+test + ASan + Studio quality) |
+| CI | Workflow **CI** green on PR (GCC `ci` + OTLP smoke + ASan + TSan + Conan + Studio quality) |
 | Format | `clang-format -i` на изменённых `*.hpp/*.cpp`; diff format clean |
 | Architecture | Diff не нарушает таблицу зависимостей из [08](08-engineering-standards.md) |
 | ADR | Если меняется граница слоёв / concurrency / ошибки / тесты — есть ADR или update |
@@ -30,7 +30,7 @@
 | clang-tidy | `scripts/run-static-analysis.sh`: analyzer/bugprone — errors; performance/readability — report |
 | cppcheck | `scripts/run-static-analysis.sh`: warning/performance/portability — errors |
 | Valgrind Memcheck | Preset `valgrind` + `scripts/run-valgrind.sh`; nightly, без definite/indirect leaks |
-| TSan | Preset `tsan`, тесты TagStore/Dispatcher — clean (nightly; блокер до Asio) |
+| TSan | Preset `tsan` — core/runtime clean (UA smoke skipped: open62541 is not TSan-built) |
 | Coverage | `scripts/coverage.sh` ≥ 70% line на `Src/domain`, `Src/core`, `Src/project` |
 | Fuzz | `OPC_ENABLE_FUZZERS` + Clang; smoke corpus на JSON loader |
 | Studio cargo test | `cargo test` в `frontend/apps/studio/src-tauri` |
