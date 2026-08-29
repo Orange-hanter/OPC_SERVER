@@ -271,13 +271,18 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja sqlite llvm openssl@3
 
-      - name: Install OpenSSL on Windows
+      - name: Install OpenSSL and Ninja on Windows
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          choco install openssl --no-progress -y
-          echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> "$GITHUB_ENV"
-          echo "CMAKE_PREFIX_PATH=C:/Program Files/OpenSSL-Win64" >> "$GITHUB_ENV"
+          choco install openssl ninja --no-progress -y
+          bash scripts/ci/windows_openssl.sh
+
+      - name: Enable MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -304,8 +309,15 @@ jobs:
               -DOPENSSL_ROOT_DIR="${OPENSSL_PREFIX}"
             )
           elif [[ "${{ runner.os }}" == "Windows" ]]; then
+            # windows-latest PATH prefers MinGW; Tauri target is MSVC and
+            # Chocolatey OpenSSL ships MSVC import libs, not MinGW archives.
             EXTRA_CMAKE_ARGS+=(
+              -DCMAKE_C_COMPILER=cl
+              -DCMAKE_CXX_COMPILER=cl
               -DOPENSSL_ROOT_DIR="${OPENSSL_ROOT_DIR}"
+              -DOPENSSL_INCLUDE_DIR="${OPENSSL_INCLUDE_DIR}"
+              -DOPENSSL_CRYPTO_LIBRARY="${OPENSSL_CRYPTO_LIBRARY}"
+              -DOPENSSL_SSL_LIBRARY="${OPENSSL_SSL_LIBRARY}"
             )
           fi
           cmake -S . -B build-studio -G Ninja \
