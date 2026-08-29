@@ -1,19 +1,61 @@
-> Исторический backlog (2019). Актуальная спецификация и порядок работ: [README.md](README.md), [07-roadmap.md](07-roadmap.md).  
-> Формат карт эволюционирует от [config.json](config.json) к [examples/demo-plant.modbusproj.json](examples/demo-plant.modbusproj.json) — см. [03-modbus-projects.md](03-modbus-projects.md).
+# Список задач
 
-1. Реализовать процедуру опроса IoT сенсора посредством протокола MofBud TCP/UDP (в первую оченедь TCP). Для этого, нужно:
-	1.1 Получить информацию о том как система должна быть сконфигурированна(карту адресов, адрес устройства, сетевые настройки (уточнить формат карты));
-	1.2 Исходя из карты сформировать ряд пакетов ModBus;
-	1.3 Применить сетевые настройки;
-	1.4 Отправить запрос - получить ответ
-	1.5 Обрпботпть ответ
-	1.6 Обновить внутренние буферы свежими данными
-	1.7 Перейти к этапу 1.4
+Актуальный backlog ядра. Порядок работ и критерии готовности: [07-roadmap.md](07-roadmap.md).  
+Исторический набросок 2019 (опрос IoT/Modbus) закрыт этапами 1–2; текст сохранён в конце файла.
 
-2. Предоставить внутрипрограммный интерфейс для доступа и работы с получеными данными на шаге 1, выводить эти данные в консоль.
+**Снимок:** 2026-08-14, линия `cursor/async-modbus-tcp-860d` поверх industrial-pki / CI / traces / A→D. В `master` пока Studio (PR #8).
 
+## Процент выполнения
 
+| Контур | Оценка | Как считали |
+|--------|--------|-------------|
+| Лабораторный MVP (этапы 0–4) | **100%** | Все чеклисты закрыты; Read/Write/Subscriptions e2e |
+| Пост-MVP (4.5–6 + инкременты A–C + хвост этапа 5) | **100%** | OTLP в CI + traces poll/write |
+| Промышленное укрепление (этап 7 / инкремент D) | **100%** | SignAndEncrypt, нагрузка-smoke, UDP |
+| **Roadmap ядра, этапы 0–7** | **100%** | 56 из 56 пунктов чеклиста (без Classic/DA и прочего «вне ядра») |
+| Инкременты после Studio (A–D + traces) | **100%** | A–D и хвост этапа 5 закрыты |
 
-Links:
-TCP/UDP protocl:	https://www.techrepublic.com/article/exploring-the-anatomy-of-a-data-packet/
-ModBus reference:	http://www.modbus.org/docs/Modbus_Messaging_Implementation_Guide_V1_0b.pdf
+«100%» — закрытые пункты спецификации ядра. Это **ещё не** полный промышленный контур: demo-plant остаётся на `None`, UDP — MBAP в датаграмме, не RTU, нагрузочный стенд — Catch2 smoke. OTLP exporters + live collector smoke, async Modbus transport API и X.509 user tokens есть; полноценный industrial CA lifecycle / роли RBAC — вне ядра.
+
+## Сейчас (закрыто)
+
+- [x] Этап 0 — документация, schema, README
+- [x] Этап 1 — `*.modbusproj.json`, `opc-map validate` / `migrate-legacy`, JSON Schema engine
+- [x] Этап 1.5 — hexagon, ADR-0001…0010, TagStore, Fake transport
+- [x] Этап 2 — Translator, Dispatcher, RuntimeIndex, Asio reactor, FC15
+- [x] Этап 2.5 — ServerRuntime, CLI, reconnect backoff, `mark_endpoint_bad`
+- [x] Этап 3 — OPC UA Read (open62541, security None)
+- [x] Этап 4 — Write + Subscriptions
+- [x] Этап 4.5 — hardening, CMake/Conan, ASan/TSan CI
+- [x] Этап 5 — historian, frame log, spdlog, OTel metrics, replay, `ua_sessions` / `tag_quality`, traces poll/write, OTLP в CI
+- [x] Этап 6 — `opc-map doctor` / `import-csv` / `gen-nodeset`, профили при load, Studio, opc-monitor, `--runtime-doctor`
+- [x] Инкремент A — Asio reactor
+- [x] Инкремент B — schema engine, FC15, sanitizer CI, UA metrics
+- [x] Инкремент C — CSV, NodeSet2, deviceProfiles expand, runtime doctor
+- [x] Инкремент D — Sign/SignAndEncrypt, cert profile Studio/opc-monitor, load stand, UDP Modbus
+- [x] Хвост этапа 5 — OTLP default-on в CI / traces на poll-write
+
+## Дальше (открыто)
+
+### Приоритет (после ядра)
+
+1. ~~CI hardening: TSan races, Conan open62541 plugins, Studio Win/macOS OpenSSL/C++23~~ — `cursor/ci-hardening-860d`
+2. ~~Промышленный PKI (fail-closed Sign/Encrypt, `--ua-crl`, `--ua-accept-untrusted`)~~ — `cursor/industrial-pki-860d`
+3. ~~Asio-native async Modbus TCP (ADR-0007)~~ — `cursor/async-modbus-tcp-860d`
+4. ~~Username token / AccessControl (`opcua.users`, `--ua-user`, Studio/opc-monitor)~~ — `cursor/username-token-860d`
+5. ~~Живой OTLP-коллектор в CI~~ — `cursor/otlp-collector-ci-860d`
+6. ~~Полный async `IModbusTransport` API (completion tokens)~~ — `cursor/async-imodbus-transport-860d`
+7. ~~X.509 user tokens (`allowCertificateIdentity`, sessionPKI / `--ua-trust`)~~ — `cursor/x509-user-token-860d`
+
+### Не в ядре (не входят в процент)
+
+- Полноценный industrial CA lifecycle / X.509 RBAC сверх AccessControl_default
+- Встроенный OPC DA/Classic
+- Полноценная SCADA
+- Другие полевые протоколы без отдельного эпика Translator
+- HTTP/WebSocket API в `OPC_SERVER` (отклонён ADR-0016)
+- Каталог вендорских device profiles сверх demo `generic-tank-sensor`
+
+## Исторический backlog (2019, закрыт)
+
+Опрос IoT по Modbus TCP (карта → PDU → сеть → буфер → повтор) и внутрипрограммный доступ/консоль — покрыто этапами 1–2 (проект карт, Dispatcher, TagStore, `--watch`). UDP из того же списка закрыт инкрементом D.

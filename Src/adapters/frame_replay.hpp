@@ -49,6 +49,11 @@ public:
     domain::Result<void>
     write_single_coil(std::uint8_t unit, std::uint16_t address, bool value) override;
 
+    domain::Result<void>
+    write_multiple_coils(std::uint8_t unit,
+                         std::uint16_t address,
+                         std::span<const std::uint8_t> values) override;
+
     [[nodiscard]] std::size_t remaining() const { return frames_.size() - next_; }
 
 private:

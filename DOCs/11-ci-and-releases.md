@@ -16,12 +16,18 @@
 
 ### Jobs (default PR)
 
-- **Ubuntu 24.04 + g++** (primary): CMake preset `ci`, `scripts/layer-lint.py`, `ctest`, package `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
-- **ASan/UBSan**: preset `asan` + `ctest --preset asan` (блокер PR).
+- **Ubuntu 24.04 + g++** (primary): CMake preset `ci` (`OPC_WITH_OTLP=ON`),
+  `scripts/layer-lint.py`, `ctest`, **OTLP live collector smoke**
+  (`scripts/ci/otlp_smoke.sh` — Docker `otel/opentelemetry-collector-contrib`
+  or Python OTLP/HTTP fallback on a free port), package
+  `opc-server-linux-x64.tar.gz` + SHA256 → **Actions artifact** (14 days).
+  Installs `libssl-dev`, `libcurl4-openssl-dev`, `protobuf-compiler` / `libprotobuf-dev`.
+- **ASan + UBSan**: preset `asan` (GCC), full Catch2 suite.
+- **TSan**: preset `tsan` (GCC) on core/runtime tests; UA client smoke is skipped because open62541 is not TSan-instrumented.
 - **Static analysis**: Clang `-Werror`, clang-tidy (analyzer/bugprone — gate,
   performance/readability — report) и cppcheck (warning/performance/portability),
   preset `static-analysis`.
-- **Conan 2**: optional dependency provider job (`OPC_DEPENDENCY_PROVIDER=CONAN`).
+- **Conan 2**: optional dependency provider job (`OPC_DEPENDENCY_PROVIDER=CONAN` for Catch2; open62541 always FetchContent).
 - Clang is supported locally with `-DCMAKE_CXX_FLAGS=-stdlib=libstdc++` when libstdc++ provides `std::expected`; not required in CI until runners ship a complete C++23 STL for Clang.
 - **Studio quality**: npm lockfile install, lint, TypeScript check, Vitest,
   Playwright (browser mock) and production web-assets build. `cargo test` for

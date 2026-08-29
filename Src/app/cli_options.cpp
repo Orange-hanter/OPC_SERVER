@@ -55,14 +55,21 @@ void print_usage(std::ostream& out) {
         << "             [--no-opcua] [--no-historian] [--historian-capacity N]\n"
         << "             [--historian-db <path.sqlite>] [--frame-log <path>]\n"
         << "             [--log-level LEVEL] [--log-file <path>]\n"
-        << "             [--metrics-export none|ostream|otlp] [--otlp-endpoint URL]\n"
+        << "             [--metrics-export none|ostream|otlp] [--traces-export none|ostream|otlp]\n"
+        << "             [--otlp-endpoint URL]\n"
+        << "             [--runtime-doctor] [--ua-cert PATH] [--ua-key PATH] [--ua-trust PATH]\n"
+        << "             [--ua-crl PATH] [--ua-strict-certs] [--ua-accept-untrusted]\n"
+        << "             [--ua-user user:pass] [--ua-deny-anonymous] [--ua-allow-anonymous]\n"
+        << "             [--ua-allow-none-password] [--ua-allow-certificate-identity]\n"
+        << "             [--ua-allow-none-certificate]\n"
         << "  OPC_SERVER --version\n"
         << "  OPC_SERVER --help\n\n"
         << "Options:\n"
         << "  --project <path>            Path to Modbus project map (default: search common paths)\n"
         << "  --once                      Run one poll cycle across endpoints and exit\n"
-        << "  --watch                     Print tag watchlist after each poll\n"
-        << "  --period-ms <n>             Loop sleep between polls (default 1000)\n"
+        << "  --watch                     Print tag watchlist on a timer (see --period-ms)\n"
+        << "  --period-ms <n>             Watchlist print interval in --watch mode (default 1000);\n"
+        << "                              poll periods come from pollGroups[].periodMs\n"
         << "  --no-opcua                  Disable OPC UA northbound server\n"
         << "  --no-historian              Disable TagStore historian subscription\n"
         << "  --historian-capacity <n>    Hot ring sample capacity (default 4096)\n"
@@ -71,7 +78,23 @@ void print_usage(std::ostream& out) {
         << "  --log-level <level>         trace|debug|info|warn|error (default info)\n"
         << "  --log-file <path>           Also write rotating spdlog file sink\n"
         << "  --metrics-export <mode>     none|ostream|otlp (default none)\n"
-        << "  --otlp-endpoint <url>       OTLP/HTTP metrics URL (requires -DOPC_WITH_OTLP=ON)\n"
+        << "  --traces-export <mode>      none|ostream|otlp poll/write spans (default none)\n"
+        << "  --otlp-endpoint <url>       OTLP/HTTP collector (metrics and/or traces; "
+           "requires -DOPC_WITH_OTLP=ON)\n"
+        << "  --runtime-doctor            After start+poll, print TagStore quality findings to stderr;\n"
+        << "                              with --once, exit 1 if any tag is missing or not Good\n"
+        << "  --ua-cert <path>            Server application certificate (DER/PEM) for Sign/Encrypt\n"
+        << "  --ua-key <path>             Matching private key\n"
+        << "  --ua-trust <path>           Trusted client cert (repeatable; required without AcceptAll)\n"
+        << "  --ua-crl <path>             Certificate revocation list file (repeatable)\n"
+        << "  --ua-strict-certs           Reject untrusted certificates (default for Sign/Encrypt)\n"
+        << "  --ua-accept-untrusted       Lab only: AcceptAll PKI for Sign/Encrypt (overrides trust)\n"
+        << "  --ua-user <user:pass>       Username token login (repeatable; merges into opcua.users)\n"
+        << "  --ua-deny-anonymous         Reject Anonymous IdentityToken\n"
+        << "  --ua-allow-anonymous        Allow Anonymous even when users are configured\n"
+        << "  --ua-allow-none-password    Lab: username/password over SecurityMode None\n"
+        << "  --ua-allow-certificate-identity  Enable X509IdentityToken (sessionPKI / --ua-trust)\n"
+        << "  --ua-allow-none-certificate Lab: X509IdentityToken over SecurityMode None\n"
         << "  --version                   Print version and exit\n";
 }
 
@@ -93,6 +116,87 @@ CliOptions parse_cli(int argc, char const* argv[]) {
         }
         if (arg == "--watch") {
             opts.watch = true;
+            continue;
+        }
+        if (arg == "--runtime-doctor") {
+            opts.runtime_doctor = true;
+            continue;
+        }
+        if (arg == "--ua-strict-certs") {
+            opts.ua_strict_certs = true;
+            continue;
+        }
+        if (arg == "--ua-accept-untrusted") {
+            opts.ua_accept_untrusted = true;
+            continue;
+        }
+        if (arg == "--ua-deny-anonymous") {
+            opts.ua_deny_anonymous = true;
+            continue;
+        }
+        if (arg == "--ua-allow-anonymous") {
+            opts.ua_allow_anonymous = true;
+            continue;
+        }
+        if (arg == "--ua-allow-none-password") {
+            opts.ua_allow_none_password = true;
+            continue;
+        }
+        if (arg == "--ua-allow-certificate-identity") {
+            opts.ua_allow_certificate_identity = true;
+            continue;
+        }
+        if (arg == "--ua-allow-none-certificate") {
+            opts.ua_allow_none_certificate = true;
+            continue;
+        }
+        if (arg == "--ua-user") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-user requires user:pass");
+                break;
+            }
+            const std::string_view cred = argv[++i];
+            const auto colon = cred.find(':');
+            if (colon == std::string_view::npos || colon == 0) {
+                opts.errors.emplace_back("--ua-user expects user:pass (non-empty user)");
+                continue;
+            }
+            opts.ua_users.push_back(CliOptions::UaUser{
+                .username = std::string(cred.substr(0, colon)),
+                .password = std::string(cred.substr(colon + 1)),
+            });
+            continue;
+        }
+        if (arg == "--ua-cert") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-cert requires a path");
+                break;
+            }
+            opts.ua_cert_path = argv[++i];
+            continue;
+        }
+        if (arg == "--ua-key") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-key requires a path");
+                break;
+            }
+            opts.ua_key_path = argv[++i];
+            continue;
+        }
+        if (arg == "--ua-trust") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-trust requires a path");
+                break;
+            }
+            opts.ua_trust_paths.emplace_back(argv[++i]);
+            continue;
+        }
+        if (arg == "--ua-crl") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--ua-crl requires a path");
+                break;
+            }
+            opts.ua_revocation_paths.emplace_back(argv[++i]);
             continue;
         }
         if (arg == "--no-opcua") {
@@ -181,6 +285,16 @@ CliOptions parse_cli(int argc, char const* argv[]) {
             }
             if (!parse_metrics_export(argv[++i], opts.metrics_export)) {
                 opts.errors.emplace_back("invalid --metrics-export (use none|ostream|otlp)");
+            }
+            continue;
+        }
+        if (arg == "--traces-export") {
+            if (i + 1 >= argc) {
+                opts.errors.emplace_back("--traces-export requires a value");
+                break;
+            }
+            if (!parse_metrics_export(argv[++i], opts.traces_export)) {
+                opts.errors.emplace_back("invalid --traces-export (use none|ostream|otlp)");
             }
             continue;
         }

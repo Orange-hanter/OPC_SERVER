@@ -23,7 +23,25 @@ struct CliOptions {
     LogLevelOption log_level{LogLevelOption::Info};
     std::string log_file;  // empty = stderr only
     MetricsExportOption metrics_export{MetricsExportOption::None};
-    std::string otlp_endpoint;  // used when metrics_export == OtlpHttp
+    MetricsExportOption traces_export{MetricsExportOption::None};
+    std::string otlp_endpoint;  // used when metrics or traces export == OtlpHttp
+    bool runtime_doctor{false};
+    std::string ua_cert_path;
+    std::string ua_key_path;
+    std::vector<std::string> ua_trust_paths;
+    std::vector<std::string> ua_revocation_paths;
+    bool ua_strict_certs{false};
+    bool ua_accept_untrusted{false};  // lab escape hatch for Sign/Encrypt
+    struct UaUser {
+        std::string username;
+        std::string password;
+    };
+    std::vector<UaUser> ua_users;  // --ua-user user:pass (repeatable; merges into project)
+    bool ua_deny_anonymous{false};
+    bool ua_allow_anonymous{false};
+    bool ua_allow_none_password{false};  // lab: username over SecurityMode None
+    bool ua_allow_certificate_identity{false};
+    bool ua_allow_none_certificate{false};  // lab: X509IdentityToken over SecurityMode None
     bool help{false};
     bool version{false};
     std::vector<std::string> errors;

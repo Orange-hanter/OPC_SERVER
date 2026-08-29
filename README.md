@@ -4,7 +4,7 @@
 
 ## Описание проекта
 
-`OPC_SERVER` собирает данные с полевых устройств по **Modbus TCP**, приводит их к инженерным тегам (типы, byte order, scale/offset) и отдаёт верхнему уровню через **OPC UA**. Цель — прозрачный, тестируемый контур между PLC/IoT и SCADA без смешивания Classic/DA в ядре.
+`OPC_SERVER` собирает данные с полевых устройств по **Modbus TCP/UDP**, приводит их к инженерным тегам (типы, byte order, scale/offset) и отдаёт верхнему уровню через **OPC UA**. Цель — прозрачный, тестируемый контур между PLC/IoT и SCADA без смешивания Classic/DA в ядре.
 
 Проект ориентирован на:
 
@@ -15,9 +15,9 @@
 
 | Слой | Роль |
 |------|------|
-| Southbound | Modbus TCP (UDP позже) |
+| Southbound | Modbus TCP и UDP (`IModbusTransport`) |
 | Core | Dispatcher, Translator, TagStore |
-| Northbound | OPC UA Server (Read; Write/Subscriptions — этапы 4+) |
+| Northbound | OPC UA Server (Read / Write / Subscriptions; None или Sign/SignAndEncrypt) |
 | Engineering | Tauri Studio, `opc-map`, схемы и примеры карт |
 
 Норматив: [DOCs/08-engineering-standards.md](DOCs/08-engineering-standards.md), [ADR](DOCs/adr/README.md).
@@ -26,22 +26,19 @@
 
 ## Возможности
 
-**Сейчас:** проекты карт + `opc-map`, TagStore/Translator/Dispatcher, Modbus TCP,
-`ServerRuntime`, **OPC UA Read/Write/Subscriptions**, диагностические узлы и
-кроссплатформенный **OPC Engineering Studio**.
+**Сейчас (лабораторный MVP + инкременты A–D):** проекты карт + `opc-map` (validate/doctor/migrate-legacy/import-csv/gen-nodeset),
+TagStore/Translator/Dispatcher, sync Modbus TCP/UDP за Asio strand-per-endpoint,
+`ServerRuntime`, **OPC UA Read/Write/Subscriptions** (DataSource; `None` или Sign/SignAndEncrypt),
+Diagnostics, historian/frame-log, spdlog/OTel metrics, **OPC Engineering Studio**.
 
-**Целевые:**
-
-- Опрос Holding/Input/Coils по проектам карт
-- Historian, frame debug, метрики
-- Промышленный security (SignAndEncrypt)
+**Следующее:** вне ядра — industrial CA lifecycle / RBAC (см. [roadmap](DOCs/07-roadmap.md), [tasks](DOCs/tasks.md)).
 
 OPC Classic / DA не входят в ядро; граница — [DOCs/01-overview.md](DOCs/01-overview.md).
 
 ## Стек
 
 - **C++26** (fallback C++23), CMake 3.28, Ninja, CMake Presets
-- open62541 (Conan 2 или FetchContent), nlohmann/json; Asio reactor — следующий инкремент
+- open62541 (Conan 2 или FetchContent), nlohmann/json, standalone Asio 1.32 (FetchContent)
   Подробнее: [DOCs/05-tech-stack.md](DOCs/05-tech-stack.md)
 
 ## Документация
@@ -70,6 +67,9 @@ cmake --workflow --preset dev
 ./build/dev/tools/opc-map/opc-map validate DOCs/examples/demo-plant.modbusproj.json
 ./build/dev/tools/opc-map/opc-map doctor DOCs/examples/demo-plant.modbusproj.json
 ./build/dev/tools/opc-map/opc-map migrate-legacy DOCs/config.json -o /tmp/migrated.modbusproj.json
+./build/dev/tools/opc-map/opc-map import-csv DOCs/examples/tank-registers.csv -o /tmp/from-csv.modbusproj.json
+./build/dev/tools/opc-map/opc-map gen-nodeset DOCs/examples/demo-plant.modbusproj.json -o /tmp/demo-plant.xml
+./build/dev/OPC_SERVER --project DOCs/examples/demo-plant.modbusproj.json --once --no-opcua --runtime-doctor
 ```
 
 ### Установка
@@ -108,7 +108,7 @@ npm run build
 
 ## CI и релизы
 
-- **CI** (push/PR на `master`): сборка GCC+Clang, `ctest`, артефакт Linux x64  
+- **CI** (push/PR на `master`): GCC + `ctest` + Conan 2 + Studio quality/package, артефакт Linux x64 
 - **Релизы**: тег `vMAJOR.MINOR.PATCH` → GitHub Release + tarball + SHA256  
 
 Подробности: [DOCs/11-ci-and-releases.md](DOCs/11-ci-and-releases.md), [CHANGELOG.md](CHANGELOG.md).

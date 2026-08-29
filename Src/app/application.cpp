@@ -3,16 +3,18 @@
 #include "adapters/frame_log.hpp"
 #include "adapters/opc_ua_server.hpp"
 #include "adapters/otel_metrics.hpp"
+#include "adapters/otel_tracer.hpp"
 #include "adapters/ring_historian.hpp"
 #include "adapters/spdlog_log.hpp"
 #include "adapters/sqlite_historian.hpp"
 #include "adapters/system_clock.hpp"
 #include "app/version.hpp"
+#include "core/runtime_doctor.hpp"
 #include "ports/i_log.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
-#include <thread>
 
 namespace opc::app {
 namespace {
@@ -45,11 +47,26 @@ adapters::MetricsExportMode to_metrics_mode(MetricsExportOption mode) {
     return adapters::MetricsExportMode::OStream;
 }
 
+adapters::TracesExportMode to_traces_mode(MetricsExportOption mode) {
+    switch (mode) {
+    case MetricsExportOption::None:
+        return adapters::TracesExportMode::None;
+    case MetricsExportOption::OStream:
+        return adapters::TracesExportMode::OStream;
+    case MetricsExportOption::OtlpHttp:
+        return adapters::TracesExportMode::OtlpHttp;
+    }
+    return adapters::TracesExportMode::None;
+}
+
 }  // namespace
 
 Application::Application() = default;
 
 Application::~Application() {
+    if (auto* traces = dynamic_cast<adapters::OtelTracer*>(tracer_.get())) {
+        traces->force_flush();
+    }
     if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
         otel->force_flush();
     }
@@ -81,8 +98,10 @@ bool Application::init(const CliOptions& options) {
         return false;
     }
 
-    if (options_.metrics_export == MetricsExportOption::OtlpHttp &&
-        !adapters::otlp_metrics_supported()) {
+    if ((options_.metrics_export == MetricsExportOption::OtlpHttp &&
+         !adapters::otlp_metrics_supported()) ||
+        (options_.traces_export == MetricsExportOption::OtlpHttp &&
+         !adapters::otlp_traces_supported())) {
         log_->error("app", "OTLP requested but build lacks OPC_WITH_OTLP");
         return false;
     }
@@ -98,6 +117,17 @@ bool Application::init(const CliOptions& options) {
     }
     metrics_ = std::move(otel);
 
+    adapters::OtelTracerOptions traces_opts;
+    traces_opts.export_mode = to_traces_mode(options_.traces_export);
+    traces_opts.otlp_endpoint = options_.otlp_endpoint;
+    traces_opts.service_version = OPC_SERVER_VERSION_STRING;
+    auto tracer = std::make_unique<adapters::OtelTracer>(std::move(traces_opts));
+    if (!tracer->ok()) {
+        log_->error("app", "otel traces init failed: " + tracer->init_error());
+        return false;
+    }
+    tracer_ = std::move(tracer);
+
     const auto path = resolve_project_path(options_.project_path);
     if (!path) {
         log_->error("app",
@@ -110,6 +140,42 @@ bool Application::init(const CliOptions& options) {
     if (!project) {
         log_->error("app", project.error().message);
         return false;
+    }
+
+    // CLI identity overlays: clone so const project can carry merged users / anonymous policy.
+    if (!options_.ua_users.empty() || options_.ua_deny_anonymous || options_.ua_allow_anonymous ||
+        options_.ua_allow_none_password || options_.ua_allow_certificate_identity ||
+        options_.ua_allow_none_certificate) {
+        const bool had_users = !(*project)->opcua.users.empty();
+        const bool had_cert_identity = (*project)->opcua.allow_certificate_identity;
+        auto mutable_project = std::make_shared<project::Project>(**project);
+        for (const auto& user : options_.ua_users) {
+            mutable_project->opcua.users.push_back(
+                project::OpcUaUser{.username = user.username, .password = user.password});
+        }
+        // Fail-closed only when CLI introduces the first identity (same as project load default).
+        // Do not clobber an explicit project allowAnonymous:true when adding more users.
+        if (((!options_.ua_users.empty() && !had_users) ||
+             (options_.ua_allow_certificate_identity && !had_cert_identity)) &&
+            !options_.ua_allow_anonymous && !options_.ua_deny_anonymous) {
+            mutable_project->opcua.allow_anonymous = false;
+        }
+        if (options_.ua_deny_anonymous) {
+            mutable_project->opcua.allow_anonymous = false;
+        }
+        if (options_.ua_allow_anonymous) {
+            mutable_project->opcua.allow_anonymous = true;
+        }
+        if (options_.ua_allow_none_password) {
+            mutable_project->opcua.allow_none_password = true;
+        }
+        if (options_.ua_allow_certificate_identity) {
+            mutable_project->opcua.allow_certificate_identity = true;
+        }
+        if (options_.ua_allow_none_certificate) {
+            mutable_project->opcua.allow_none_certificate = true;
+        }
+        *project = std::move(mutable_project);
     }
 
     if (!options_.frame_log_path.empty()) {
@@ -143,7 +209,28 @@ bool Application::init(const CliOptions& options) {
 
     std::unique_ptr<ports::IOpcUaFacade> opcua;
     if (options_.enable_opcua) {
-        opcua = std::make_unique<adapters::OpcUaServer>(log_.get());
+        adapters::OpcUaSecurityOptions pki;
+        pki.certificate_path = options_.ua_cert_path;
+        pki.private_key_path = options_.ua_key_path;
+        pki.trust_list = options_.ua_trust_paths;
+        pki.revocation_list = options_.ua_revocation_paths;
+        // Sign/Encrypt is fail-closed: AcceptAll only with explicit lab flag.
+        // --ua-strict-certs always wins (reject untrusted).
+        const bool secure =
+            (*project)->opcua.security_mode != project::SecurityMode::None;
+        if (options_.ua_strict_certs) {
+            pki.accept_untrusted = false;
+        } else if (secure) {
+            pki.accept_untrusted = options_.ua_accept_untrusted;
+        } else {
+            pki.accept_untrusted = true;  // security None: no channel PKI
+        }
+        if (secure && !pki.accept_untrusted && pki.trust_list.empty()) {
+            log_->warn("app",
+                       "Sign/Encrypt without --ua-trust: only explicitly trusted client "
+                       "certificates will be accepted (pass --ua-accept-untrusted for lab)");
+        }
+        opcua = std::make_unique<adapters::OpcUaServer>(log_.get(), metrics_.get(), std::move(pki));
     }
 
     auto runtime = ServerRuntime::create(ServerRuntimeDeps{
@@ -153,7 +240,8 @@ bool Application::init(const CliOptions& options) {
         .log = log_.get(),
         .historian = historian_.get(),
         .frame_log = frame_log_.get(),
-        .transport_factory = default_tcp_transport_factory(frame_log_.get()),
+        .tracer = tracer_.get(),
+        .transport_factory = default_transport_factory(frame_log_.get()),
         .opcua = std::move(opcua),
     });
     if (!runtime) {
@@ -185,20 +273,50 @@ int Application::run() {
         }
     };
 
-    if (options_.once) {
-        poll_and_watch(clock_->now_ms());
-        runtime_->stop();
-        if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
-            otel->force_flush();
+    const auto print_runtime_doctor = [&]() -> int {
+        const auto report = opc::core::runtime_doctor(runtime_->index(), runtime_->tag_store());
+        for (const auto& finding : report.findings) {
+            const char* level =
+                finding.severity == opc::core::RuntimeDoctorFinding::Severity::Error ? "error" : "warning";
+            std::cerr << level << ": " << finding.tag_name << ": " << finding.message << '\n';
         }
-        return 0;
+        std::cerr << "runtime-doctor: " << report.error_count << " error(s), " << report.warning_count
+                  << " warning(s)\n";
+        return report.error_count > 0 ? 1 : 0;
+    };
+
+    if (options_.once || options_.runtime_doctor) {
+        poll_and_watch(clock_->now_ms());
+        int doctor_rc = 0;
+        if (options_.runtime_doctor) {
+            doctor_rc = print_runtime_doctor();
+        }
+        if (options_.once) {
+            runtime_->stop();
+            if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
+                otel->force_flush();
+            }
+            return doctor_rc;
+        }
     }
 
-    log_->info("app", "entering poll loop (Ctrl+C to stop)");
-    while (true) {
-        poll_and_watch(clock_->now_ms());
-        std::this_thread::sleep_for(std::chrono::milliseconds(options_.watch_period_ms));
+    log_->info("app", "entering asio reactor (Ctrl+C to stop)");
+    ReactorOptions reactor_opts;
+    if (options_.watch) {
+        reactor_opts.watch_period = std::chrono::milliseconds{std::max(1, options_.watch_period_ms)};
+        reactor_opts.watch_out = &std::cout;
     }
+    if (auto s = runtime_->start_reactor(reactor_opts); !s) {
+        log_->error("app", "reactor start failed: " + s.error().message);
+        runtime_->stop();
+        return 1;
+    }
+    runtime_->run_until_stop();
+    runtime_->stop();
+    if (auto* otel = dynamic_cast<adapters::OtelMetrics*>(metrics_.get())) {
+        otel->force_flush();
+    }
+    return 0;
 }
 
 }  // namespace opc::app

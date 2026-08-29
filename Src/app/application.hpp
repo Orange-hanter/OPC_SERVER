@@ -4,6 +4,7 @@
 #include "app/server_runtime.hpp"
 #include "ports/i_frame_log.hpp"
 #include "ports/i_historian.hpp"
+#include "ports/i_tracer.hpp"
 
 #include <memory>
 
@@ -22,6 +23,7 @@ private:
     std::unique_ptr<ports::ILog> log_;
     std::unique_ptr<ports::IClock> clock_;
     std::unique_ptr<ports::IMetrics> metrics_;
+    std::unique_ptr<ports::ITracer> tracer_;
     std::unique_ptr<ports::IHistorian> historian_;
     std::unique_ptr<ports::IFrameLog> frame_log_;
     std::unique_ptr<ServerRuntime> runtime_;

@@ -29,7 +29,7 @@
 
 | Компонент | Выбор |
 |-----------|--------|
-| Async I/O | **Boost.Asio** или standalone **Asio** |
+| Async I/O | standalone **Asio** 1.32 (`FetchContent`, `opc::asio`; hexagon: только `adapters/`) |
 | Модель | один или несколько `io_context`, strand на endpoint |
 
 Почему Asio: зрелый async TCP, таймеры для периодов опроса, переносимость Linux/Windows.
@@ -38,7 +38,7 @@
 
 | Компонент | Выбор |
 |-----------|--------|
-| Ядро UA | **open62541** (C, высокая производительность, широкое покрытие сервисов) |
+| Ядро UA | **open62541** 1.4.11 FetchContent (`UA_ENABLE_ENCRYPTION=OPENSSL`; всегда FetchContent — Conan-пакеты без plugin headers) |
 | C++ слой | Тонкая обёртка на C++26 **или** [open62541pp](https://github.com/open62541pp/open62541pp) как база |
 
 Сервер использует Information Model из проекта; Subscriptions — через API open62541.
@@ -47,17 +47,17 @@
 
 | Компонент | Выбор |
 |-----------|--------|
-| Клиент | **Asio-native Modbus TCP client** (предпочтительно) **или** libmodbus за адаптером |
+| Клиент | **Asio-native Modbus TCP** (`async_connect`/`async_read`/`async_write` на private `io_context`) и **Modbus UDP** за `IModbusTransport`; sync API вызывается только со strand endpoint |
 | Legacy | submodule `Lib/modbuspp` — **не ядро**; кандидат на удаление/замену |
 
-UDP — второй этап того же абстрактного transport-интерфейса.
+UDP — `ModbusUdpTransport`: тот же MBAP ADU, один запрос/ответ на датаграмму (`endpoints[].transport = "udp"`).
 
 ## Конфигурация и проекты карт
 
 | Компонент | Выбор |
 |-----------|--------|
 | JSON | **nlohmann/json** (уже в `Lib/Json`) |
-| Валидация | JSON Schema (draft 2020-12) — библиотека вроде `nlohmann_json_schema_validator` или аналог |
+| Валидация | JSON Schema draft 2020-12 (`nlohmann_json_schema_validator` + bundled schema; `$defs` mapped to Draft 7) + semantic checks |
 | Формат | `*.modbusproj.json` ([схема](schemas/modbus-project.schema.json)) |
 | YAML (опционально) | фронтенд для людей → компиляция в JSON при `opc-map validate` |
 
@@ -66,7 +66,7 @@ UDP — второй этап того же абстрактного transport-�
 | Компонент | Выбор |
 |-----------|--------|
 | Логи | **spdlog** (async logger, уровни, sink в файл/stdout) |
-| Метрики/трассы | **OpenTelemetry** C++ SDK (poll RTT, UA sessions, write queue depth) |
+| Метрики/трассы | **OpenTelemetry** C++ SDK: metrics (`ua_sessions` / `tag_quality`) и traces `modbus.poll` / `modbus.write`; OTLP/HTTP в CI (`OPC_WITH_OTLP`) |
 
 ## Тестирование
 

@@ -4,7 +4,6 @@ on:
   push:
     branches: [master]
   pull_request:
-    branches: [master]
   workflow_dispatch:
 
 concurrency:
@@ -28,7 +27,8 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev libssl-dev \
+            libcurl4-openssl-dev protobuf-compiler libprotobuf-dev
 
       - name: Layer lint
         run: python3 scripts/layer-lint.py
@@ -42,6 +42,11 @@ jobs:
       - name: Test
         run: ctest --preset ci --timeout 120
         # OPC UA smoke tests bind ephemeral ports; keep modest parallelism.
+
+      - name: OTLP live collector smoke
+        run: |
+          chmod +x scripts/ci/otlp_smoke.sh scripts/ci/otlp_http_receiver.py
+          OPC_BUILD_DIR="${GITHUB_WORKSPACE}/build/ci" ./scripts/ci/otlp_smoke.sh
 
       - name: Package binaries
         run: |
@@ -68,6 +73,7 @@ jobs:
   asan:
     name: ASan + UBSan (ubuntu-24.04 / g++)
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -78,16 +84,49 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev libssl-dev
 
       - name: Configure
-        run: cmake --preset asan -DCMAKE_CXX_COMPILER=g++
+        run: cmake --preset asan -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
 
       - name: Build
-        run: cmake --build --preset asan
+        run: cmake --build --preset asan --target opc_tests
 
       - name: Test
         run: ctest --preset asan --timeout 180
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+  tsan:
+    name: TSan core/runtime (ubuntu-24.04 / g++)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev libssl-dev
+
+      - name: Configure
+        run: cmake --preset tsan -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+
+      - name: Build
+        run: cmake --build --preset tsan --target opc_tests
+
+      - name: Test
+        # open62541 is not built with TSan; skip UA client/server smoke and monitor browse.
+        run: >
+          ctest --preset tsan --timeout 180
+          -E "OpcUa|OPC UA|UA Write|UA Subscription|UA write|opc-monitor browses|SignAndEncrypt"
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
 
   static-analysis:
     name: Clang warnings, clang-tidy & cppcheck
@@ -104,7 +143,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             ninja-build cmake g++-14 clang-19 clang-tidy-19 lld-19 \
-            cppcheck libsqlite3-dev
+            cppcheck libsqlite3-dev libssl-dev
 
       - name: Analyze and build
         run: ./scripts/run-static-analysis.sh
@@ -123,7 +162,7 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev libssl-dev
           pipx install conan
 
       - name: Create Conan profile
@@ -215,12 +254,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            cmake ninja-build g++ libsqlite3-dev libwebkit2gtk-4.1-dev \
+            cmake ninja-build g++ libsqlite3-dev libssl-dev libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - name: Install Ninja on macOS
         if: runner.os == 'macOS'
-        run: brew install ninja sqlite
+        run: brew install ninja sqlite llvm openssl@3
+
+      - name: Install OpenSSL on Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install openssl --no-progress -y
+          echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=C:/Program Files/OpenSSL-Win64" >> "$GITHUB_ENV"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -237,9 +284,24 @@ jobs:
       - name: Build native sidecars
         shell: bash
         run: |
+          EXTRA_CMAKE_ARGS=()
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            LLVM_PREFIX="$(brew --prefix llvm)"
+            OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+            EXTRA_CMAKE_ARGS+=(
+              -DCMAKE_C_COMPILER="${LLVM_PREFIX}/bin/clang"
+              -DCMAKE_CXX_COMPILER="${LLVM_PREFIX}/bin/clang++"
+              -DOPENSSL_ROOT_DIR="${OPENSSL_PREFIX}"
+            )
+          elif [[ "${{ runner.os }}" == "Windows" ]]; then
+            EXTRA_CMAKE_ARGS+=(
+              -DOPENSSL_ROOT_DIR="${OPENSSL_ROOT_DIR}"
+            )
+          fi
           cmake -S . -B build-studio -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=OFF
+            -DBUILD_TESTING=OFF \
+            "${EXTRA_CMAKE_ARGS[@]}"
           cmake --build build-studio --target opc-map opc-monitor --parallel
           mkdir -p frontend/apps/studio/src-tauri/binaries
           cp "build-studio/tools/opc-map/opc-map${{ matrix.suffix }}" \

@@ -4,6 +4,7 @@
 #include "core/runtime_index.hpp"
 #include "core/tag_store.hpp"
 #include "domain/types.hpp"
+#include "ports/i_executor.hpp"
 #include "ports/i_clock.hpp"
 #include "ports/i_frame_log.hpp"
 #include "ports/i_historian.hpp"
@@ -11,14 +12,22 @@
 #include "ports/i_metrics.hpp"
 #include "ports/i_modbus_transport.hpp"
 #include "ports/i_opc_ua_facade.hpp"
+#include "ports/i_tracer.hpp"
 #include "project/types.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+
+namespace opc::adapters {
+class AsioReactor;
+}
 
 namespace opc::app {
 
@@ -32,9 +41,15 @@ struct ServerRuntimeDeps {
     ports::ILog* log{nullptr};
     ports::IHistorian* historian{nullptr};
     ports::IFrameLog* frame_log{nullptr};
+    ports::ITracer* tracer{nullptr};
     TransportFactory transport_factory;
     /// Optional northbound OPC UA facade (owned by caller or moved in).
     std::unique_ptr<ports::IOpcUaFacade> opcua;
+};
+
+struct ReactorOptions {
+    std::chrono::milliseconds watch_period{0};
+    std::ostream* watch_out{nullptr};
 };
 
 /// Composition root for southbound+core runtime (ADR-0001).
@@ -60,11 +75,23 @@ public:
 
     domain::Result<void> start();
     domain::Result<void> poll_once(domain::TimestampMs now);
+    /// Start Asio workers and per-endpoint poll timers. `--once` must not call this.
+    domain::Result<void> start_reactor(ReactorOptions options = {});
+    /// Block until SIGINT/SIGTERM or `stop()`. Requires `start_reactor()`.
+    void run_until_stop();
+    [[nodiscard]] bool reactor_running() const;
     void write_watchlist(std::ostream& out) const;
     void stop();
 
 private:
     explicit ServerRuntime(ServerRuntimeDeps deps);
+
+    /// Per-endpoint poll bookkeeping. Keys are fixed after start_reactor(); only atomics mutate.
+    struct EndpointPollState {
+        std::atomic<bool> inflight{false};
+        /// 0 = no reconnect backoff armed.
+        std::atomic<domain::TimestampMs> next_reconnect_ms{0};
+    };
 
     std::shared_ptr<const project::Project> project_;
     core::RuntimeIndex index_;
@@ -75,11 +102,20 @@ private:
     ports::ILog* log_{nullptr};
     ports::IHistorian* historian_{nullptr};
     ports::IFrameLog* frame_log_{nullptr};
+    ports::ITracer* tracer_{nullptr};
     TransportFactory transport_factory_;
     std::unordered_map<std::string, std::unique_ptr<ports::IModbusTransport>> transports_;
+    std::unordered_map<std::string, std::shared_ptr<ports::IExecutor>> transport_executors_;
+    std::unordered_map<std::string, std::unique_ptr<EndpointPollState>> endpoint_poll_state_;
     std::unique_ptr<ports::IOpcUaFacade> opcua_;
+    std::unique_ptr<adapters::AsioReactor> reactor_;
     std::optional<std::uint64_t> historian_sub_;
     bool started_{false};
+
+    void tick_endpoint(const std::string& endpoint_id);
+    void install_write_handler();
+    [[nodiscard]] std::size_t choose_worker_count() const;
+    [[nodiscard]] int min_group_period_ms(std::string_view endpoint_id) const;
 };
 
 [[nodiscard]] std::optional<std::string> resolve_project_path(const std::string& explicit_path);
@@ -88,5 +124,6 @@ private:
 load_project_or_error(const std::string& path, ports::ILog* log);
 
 TransportFactory default_tcp_transport_factory(ports::IFrameLog* frame_log = nullptr);
+TransportFactory default_transport_factory(ports::IFrameLog* frame_log = nullptr);
 
 }  // namespace opc::app

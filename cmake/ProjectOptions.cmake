@@ -21,7 +21,7 @@ function(opc_configure_project_options)
   endif()
 
   if(OPC_ENABLE_SANITIZERS AND OPC_ENABLE_TSAN)
-    message(FATAL_ERROR "OPC_ENABLE_SANITIZERS and OPC_ENABLE_TSAN cannot be combined")
+    message(FATAL_ERROR "OPC_ENABLE_SANITIZERS and OPC_ENABLE_TSAN cannot be enabled together.")
   endif()
 
   if(OPC_ENABLE_SANITIZERS)
@@ -51,7 +51,8 @@ function(opc_configure_project_options)
         -fno-omit-frame-pointer
       )
     else()
-      message(FATAL_ERROR "OPC_ENABLE_TSAN currently supports GCC and Clang only.")
+      message(FATAL_ERROR
+        "OPC_ENABLE_TSAN currently supports GCC and Clang only.")
     endif()
   endif()
 
