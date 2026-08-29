@@ -380,7 +380,7 @@ void ModbusTcpTransport::async_transact(std::uint8_t unit,
                            if (!result) {
                                fr.error = result.error().message;
                                if (result.error().protocol_status) {
-                                   fr.exception_code = *result.error().protocol_status;
+                                   fr.exception_code = result.error().protocol_status;
                                }
                                if (result.error().code == domain::ErrorCode::Connection ||
                                    result.error().code == domain::ErrorCode::Timeout) {

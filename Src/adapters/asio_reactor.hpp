@@ -14,7 +14,7 @@ namespace opc::adapters {
 class AsioReactor {
 public:
     explicit AsioReactor(std::size_t worker_threads);
-    ~AsioReactor();
+    ~AsioReactor() noexcept;
 
     AsioReactor(const AsioReactor&) = delete;
     AsioReactor& operator=(const AsioReactor&) = delete;

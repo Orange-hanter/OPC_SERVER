@@ -734,7 +734,7 @@ domain::Result<void> OpcUaServer::start(std::shared_ptr<const project::Project> 
         return rest.empty() || rest == "0.0.0.0" || rest == "[::]" || rest == "::";
     }();
 
-    auto status = UA_STATUSCODE_GOOD;
+    UA_StatusCode status = UA_STATUSCODE_GOOD;
     if (!want_secure) {
         status = UA_ServerConfig_setMinimal(config, port, nullptr);
     } else {

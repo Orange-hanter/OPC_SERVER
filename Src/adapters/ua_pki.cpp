@@ -101,8 +101,12 @@ load_or_create_application_cert(std::string_view application_uri,
     UA_KeyValueMap* kvm = UA_KeyValueMap_new();
     UA_UInt16 expires = 365;
     UA_UInt16 bits = 2048;
-    UA_KeyValueMap_setScalar(kvm, UA_QUALIFIEDNAME(0, "expires-in-days"), &expires, &UA_TYPES[UA_TYPES_UINT16]);
-    UA_KeyValueMap_setScalar(kvm, UA_QUALIFIEDNAME(0, "key-size-bits"), &bits, &UA_TYPES[UA_TYPES_UINT16]);
+    char expires_key[] = "expires-in-days";
+    char bits_key[] = "key-size-bits";
+    UA_KeyValueMap_setScalar(kvm, UA_QUALIFIEDNAME(0, expires_key), &expires,
+                             &UA_TYPES[UA_TYPES_UINT16]);
+    UA_KeyValueMap_setScalar(kvm, UA_QUALIFIEDNAME(0, bits_key), &bits,
+                             &UA_TYPES[UA_TYPES_UINT16]);
     const auto status =
         UA_CreateCertificate(UA_Log_Stdout, subject, 3, subject_alt, 2, UA_CERTIFICATEFORMAT_DER, kvm, &key,
                              &cert);

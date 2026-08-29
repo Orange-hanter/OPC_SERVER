@@ -129,7 +129,7 @@ struct AsioReactor::Impl {
                 op->cancel();
             }
         }
-        if (guard) {
+        if (guard.has_value()) {
             guard->reset();
         }
         ctx.stop();
@@ -154,8 +154,11 @@ struct AsioReactor::Impl {
 AsioReactor::AsioReactor(std::size_t worker_threads)
     : impl_(std::make_unique<Impl>(worker_threads)) {}
 
-AsioReactor::~AsioReactor() {
-    stop();
+AsioReactor::~AsioReactor() noexcept {
+    try {
+        stop();
+    } catch (...) {
+    }
 }
 
 void AsioReactor::ensure_strand(std::string_view endpoint_id) {
@@ -202,7 +205,9 @@ void AsioReactor::start() {
         return;
     }
     impl_->stopping = false;
-    if (!impl_->guard || !impl_->guard->owns_work()) {
+    if (!impl_->guard.has_value()) {
+        impl_->guard.emplace(asio::make_work_guard(impl_->ctx));
+    } else if (!impl_->guard->owns_work()) {
         impl_->guard.emplace(asio::make_work_guard(impl_->ctx));
     }
     impl_->ctx.restart();

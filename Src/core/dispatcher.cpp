@@ -514,8 +514,8 @@ void Dispatcher::poll_due_async(std::string_view endpoint_id,
 
             void next() {
                 if (index >= tags->size()) {
-                    if (*first_error) {
-                        finish(std::unexpected(**first_error));
+                    if (first_error != nullptr && first_error->has_value()) {
+                        finish(std::unexpected(std::move(**first_error)));
                     } else {
                         finish({});
                     }
@@ -526,7 +526,8 @@ void Dispatcher::poll_due_async(std::string_view endpoint_id,
                 self->poll_tag_async(
                     std::move(binding), *transport, now,
                     [keep](domain::Result<void> r) {
-                        if (!r && !*keep->first_error) {
+                        if (!r && keep->first_error != nullptr &&
+                            !keep->first_error->has_value()) {
                             *keep->first_error = r.error();
                         }
                         keep->next();

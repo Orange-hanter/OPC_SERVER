@@ -31,6 +31,9 @@ TEST_CASE("opc-map validate exit codes", "[contract][cli][opc-map]") {
     const auto demo = root / "DOCs" / "examples" / "demo-plant.modbusproj.json";
     const auto bad = root / "tests" / "fixtures" / "invalid" / "missing-required.json";
     const std::string bin = OPC_MAP_EXECUTABLE;
+    if (!std::filesystem::exists(bin)) {
+        SKIP("opc-map binary was not built: " + bin);
+    }
 
     REQUIRE(run_cmd(bin + " validate " + demo.string() + " >/dev/null") == 0);
     REQUIRE(run_cmd(bin + " validate " + bad.string() + " >/dev/null 2>/dev/null") == 1);
@@ -44,6 +47,9 @@ TEST_CASE("opc-map doctor on demo-plant is warning-only", "[contract][cli][opc-m
 #else
     const auto demo = opc_repo_root() / "DOCs" / "examples" / "demo-plant.modbusproj.json";
     const std::string bin = OPC_MAP_EXECUTABLE;
+    if (!std::filesystem::exists(bin)) {
+        SKIP("opc-map binary was not built: " + bin);
+    }
     REQUIRE(run_cmd(bin + " doctor " + demo.string() + " >/dev/null") == 0);
 #endif
 }
