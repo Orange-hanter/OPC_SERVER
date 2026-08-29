@@ -9,6 +9,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -155,10 +156,7 @@ AsioReactor::AsioReactor(std::size_t worker_threads)
     : impl_(std::make_unique<Impl>(worker_threads)) {}
 
 AsioReactor::~AsioReactor() noexcept {
-    try {
-        stop();
-    } catch (...) {
-    }
+    stop();
 }
 
 void AsioReactor::ensure_strand(std::string_view endpoint_id) {
@@ -205,9 +203,11 @@ void AsioReactor::start() {
         return;
     }
     impl_->stopping = false;
-    if (!impl_->guard.has_value()) {
-        impl_->guard.emplace(asio::make_work_guard(impl_->ctx));
-    } else if (!impl_->guard->owns_work()) {
+    WorkGuard* existing = nullptr;
+    if (impl_->guard.has_value()) {
+        existing = &*impl_->guard;
+    }
+    if (existing == nullptr || !existing->owns_work()) {
         impl_->guard.emplace(asio::make_work_guard(impl_->ctx));
     }
     impl_->ctx.restart();
@@ -218,11 +218,17 @@ void AsioReactor::start() {
     }
 }
 
-void AsioReactor::stop() {
+void AsioReactor::stop() noexcept {
     impl_->request_stop();
     for (auto& thread : impl_->threads) {
         if (thread.joinable() && thread.get_id() != std::this_thread::get_id()) {
-            thread.join();
+            try {
+                thread.join();
+            } catch (const std::system_error&) {
+                if (thread.joinable()) {
+                    thread.detach();
+                }
+            }
         }
     }
     impl_->threads.clear();

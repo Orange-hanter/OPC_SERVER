@@ -494,7 +494,7 @@ void ModbusTcpTransport::async_transact(std::uint8_t unit,
                                                impl_->socket, asio::buffer(*body),
                                                asio::bind_executor(
                                                    impl_->strand,
-                                                   [this, req, mbap, body,
+                                                   [req, mbap, body,
                                                     handler = std::move(handler),
                                                     frame = std::move(frame), t0,
                                                     finish = std::move(finish), deadline, finished](

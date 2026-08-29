@@ -219,13 +219,13 @@ jobs:
 
       - name: Stub sidecar binaries for cargo test
         run: |
-          # Tauri build.rs requires externalBin paths; cargo test does not invoke them.
-          mkdir -p frontend/apps/studio/src-tauri/binaries
+          # Job default cwd is frontend/apps/studio. Tauri build.rs requires externalBin.
+          mkdir -p src-tauri/binaries
           triple="$(rustc -vV | sed -n 's/^host: //p')"
-          : > "frontend/apps/studio/src-tauri/binaries/opc-map-${triple}"
-          : > "frontend/apps/studio/src-tauri/binaries/opc-monitor-${triple}"
-          chmod +x frontend/apps/studio/src-tauri/binaries/opc-map-"${triple}" \
-            frontend/apps/studio/src-tauri/binaries/opc-monitor-"${triple}"
+          : > "src-tauri/binaries/opc-map-${triple}"
+          : > "src-tauri/binaries/opc-monitor-${triple}"
+          chmod +x "src-tauri/binaries/opc-map-${triple}" \
+            "src-tauri/binaries/opc-monitor-${triple}"
 
       - name: Sidecar unit tests
         working-directory: frontend/apps/studio/src-tauri

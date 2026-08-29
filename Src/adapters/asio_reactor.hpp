@@ -39,7 +39,7 @@ public:
     void start();
 
     /// Cancel timers, stop io_context, join workers. Safe from any thread except a worker.
-    void stop();
+    void stop() noexcept;
 
     /// Block until `stop()` (SIGINT/SIGTERM also request stop).
     void run_until_stop();
