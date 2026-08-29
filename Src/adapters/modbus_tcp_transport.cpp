@@ -380,7 +380,7 @@ void ModbusTcpTransport::async_transact(std::uint8_t unit,
                            if (!result) {
                                fr.error = result.error().message;
                                if (result.error().protocol_status) {
-                                   fr.exception_code = *result.error().protocol_status;
+                                   fr.exception_code = result.error().protocol_status;
                                }
                                if (result.error().code == domain::ErrorCode::Connection ||
                                    result.error().code == domain::ErrorCode::Timeout) {
@@ -494,7 +494,7 @@ void ModbusTcpTransport::async_transact(std::uint8_t unit,
                                                impl_->socket, asio::buffer(*body),
                                                asio::bind_executor(
                                                    impl_->strand,
-                                                   [this, req, mbap, body,
+                                                   [req, mbap, body,
                                                     handler = std::move(handler),
                                                     frame = std::move(frame), t0,
                                                     finish = std::move(finish), deadline, finished](

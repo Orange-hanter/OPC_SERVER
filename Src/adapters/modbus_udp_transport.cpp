@@ -59,7 +59,8 @@ domain::Result<void> ModbusUdpTransport::connect(const ports::EndpointAddress& e
 
     timeval tv{};
     tv.tv_sec = response_timeout_ms_ / 1000;
-    tv.tv_usec = (response_timeout_ms_ % 1000) * 1000;
+    tv.tv_usec = static_cast<decltype(tv.tv_usec)>(
+        static_cast<long>(response_timeout_ms_ % 1000) * 1000);
     setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
@@ -114,7 +115,7 @@ ModbusUdpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pd
         if (!result) {
             frame.error = result.error().message;
             if (result.error().protocol_status) {
-                frame.exception_code = *result.error().protocol_status;
+                frame.exception_code = result.error().protocol_status;
             }
         }
         lock.unlock();
@@ -127,6 +128,8 @@ ModbusUdpTransport::transact(std::uint8_t unit, std::span<const std::uint8_t> pd
     }
 
     std::uint8_t buf[260];
+    // Synchronous UDP I/O is serialized by mutex_ (ADR-0002).
+    // NOLINTNEXTLINE(clang-analyzer-unix.BlockInCriticalSection)
     const auto n = ::recv(fd_, buf, sizeof(buf), 0);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {

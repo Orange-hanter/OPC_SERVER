@@ -459,7 +459,7 @@ void Dispatcher::poll_due_async(std::string_view endpoint_id,
     auto shared_span = std::shared_ptr<ports::ISpan>(std::move(span));
     auto shared_done =
         std::make_shared<ports::ModbusCompletion<void>>(std::move(done));
-    auto first_error = std::make_shared<std::optional<domain::Error>>();
+    auto first_error = std::make_shared<std::shared_ptr<domain::Error>>();
 
     auto finish = [shared_span, shared_done, first_error](domain::Result<void> result) {
         if (shared_span && !result) {
@@ -510,12 +510,16 @@ void Dispatcher::poll_due_async(std::string_view endpoint_id,
             std::shared_ptr<std::vector<TagBinding>> tags;
             std::size_t index{0};
             ports::ModbusCompletion<void> finish;
-            std::shared_ptr<std::optional<domain::Error>> first_error;
+            std::shared_ptr<std::shared_ptr<domain::Error>> first_error;
 
             void next() {
                 if (index >= tags->size()) {
-                    if (*first_error) {
-                        finish(std::unexpected(**first_error));
+                    std::shared_ptr<domain::Error> held;
+                    if (first_error != nullptr) {
+                        held = *first_error;
+                    }
+                    if (held != nullptr) {
+                        finish(std::unexpected(std::move(*held)));
                     } else {
                         finish({});
                     }
@@ -526,8 +530,8 @@ void Dispatcher::poll_due_async(std::string_view endpoint_id,
                 self->poll_tag_async(
                     std::move(binding), *transport, now,
                     [keep](domain::Result<void> r) {
-                        if (!r && !*keep->first_error) {
-                            *keep->first_error = r.error();
+                        if (!r && keep->first_error != nullptr && *keep->first_error == nullptr) {
+                            *keep->first_error = std::make_shared<domain::Error>(r.error());
                         }
                         keep->next();
                     });

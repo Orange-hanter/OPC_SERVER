@@ -90,7 +90,7 @@ jobs:
         run: cmake --preset asan -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
 
       - name: Build
-        run: cmake --build --preset asan --target opc_tests
+        run: cmake --build --preset asan --target opc_tests opc-map
 
       - name: Test
         run: ctest --preset asan --timeout 180
@@ -118,7 +118,7 @@ jobs:
         run: cmake --preset tsan -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
 
       - name: Build
-        run: cmake --build --preset tsan --target opc_tests
+        run: cmake --build --preset tsan --target opc_tests opc-map
 
       - name: Test
         # open62541 is not built with TSan; skip UA client/server smoke and monitor browse.
@@ -216,6 +216,16 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Stub sidecar binaries for cargo test
+        run: |
+          # Job default cwd is frontend/apps/studio. Tauri build.rs requires externalBin.
+          mkdir -p src-tauri/binaries
+          triple="$(rustc -vV | sed -n 's/^host: //p')"
+          : > "src-tauri/binaries/opc-map-${triple}"
+          : > "src-tauri/binaries/opc-monitor-${triple}"
+          chmod +x "src-tauri/binaries/opc-map-${triple}" \
+            "src-tauri/binaries/opc-monitor-${triple}"
 
       - name: Sidecar unit tests
         working-directory: frontend/apps/studio/src-tauri
