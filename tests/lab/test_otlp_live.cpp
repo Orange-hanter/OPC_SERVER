@@ -17,6 +17,7 @@ namespace {
            std::string(value) != "false" && std::string(value) != "FALSE";
 }
 
+#ifdef OPC_WITH_OTLP
 [[nodiscard]] std::string env_or(const char* name, const char* fallback) {
     const char* value = std::getenv(name);
     if (value == nullptr || value[0] == '\0') {
@@ -47,6 +48,7 @@ namespace {
     }
     return file_contains(path, needle);
 }
+#endif
 
 }  // namespace
 
