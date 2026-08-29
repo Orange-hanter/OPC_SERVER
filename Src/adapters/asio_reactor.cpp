@@ -6,8 +6,8 @@
 #include <chrono>
 #include <csignal>
 #include <functional>
+#include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -90,7 +90,7 @@ struct StrandExecutor final : ports::IExecutor {
 struct AsioReactor::Impl {
     explicit Impl(std::size_t worker_threads)
         : worker_threads(worker_threads < 1 ? 1 : worker_threads),
-          guard(asio::make_work_guard(ctx)) {}
+          guard(std::make_unique<WorkGuard>(asio::make_work_guard(ctx))) {}
 
     Strand& strand_for(std::string_view endpoint_id) {
         const std::string key{endpoint_id};
@@ -130,7 +130,7 @@ struct AsioReactor::Impl {
                 op->cancel();
             }
         }
-        if (guard.has_value()) {
+        if (guard != nullptr) {
             guard->reset();
         }
         ctx.stop();
@@ -142,7 +142,7 @@ struct AsioReactor::Impl {
 
     std::size_t worker_threads{2};
     IoContext ctx;
-    std::optional<WorkGuard> guard;
+    std::unique_ptr<WorkGuard> guard;
     std::mutex mutex;
     std::unordered_map<std::string, std::unique_ptr<Strand>> strands;
     std::vector<std::shared_ptr<RepeatOp>> repeats;
@@ -203,12 +203,8 @@ void AsioReactor::start() {
         return;
     }
     impl_->stopping = false;
-    WorkGuard* existing = nullptr;
-    if (impl_->guard.has_value()) {
-        existing = &*impl_->guard;
-    }
-    if (existing == nullptr || !existing->owns_work()) {
-        impl_->guard.emplace(asio::make_work_guard(impl_->ctx));
+    if (impl_->guard == nullptr || !impl_->guard->owns_work()) {
+        impl_->guard = std::make_unique<WorkGuard>(asio::make_work_guard(impl_->ctx));
     }
     impl_->ctx.restart();
     impl_->threads.clear();
@@ -219,20 +215,23 @@ void AsioReactor::start() {
 }
 
 void AsioReactor::stop() noexcept {
-    impl_->request_stop();
-    for (auto& thread : impl_->threads) {
-        if (thread.joinable() && thread.get_id() != std::this_thread::get_id()) {
-            try {
+    try {
+        impl_->request_stop();
+        for (auto& thread : impl_->threads) {
+            if (thread.joinable() && thread.get_id() != std::this_thread::get_id()) {
                 thread.join();
-            } catch (const std::system_error&) {
-                if (thread.joinable()) {
-                    thread.detach();
-                }
             }
         }
+        impl_->threads.clear();
+        impl_->signals.reset();
+    } catch (const std::exception&) {
+        for (auto& thread : impl_->threads) {
+            if (thread.joinable()) {
+                thread.detach();
+            }
+        }
+        impl_->threads.clear();
     }
-    impl_->threads.clear();
-    impl_->signals.reset();
     impl_->running = false;
 }
 
