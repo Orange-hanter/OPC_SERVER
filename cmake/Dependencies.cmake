@@ -13,7 +13,83 @@ function(_opc_find_open62541_target output_variable)
   set("${output_variable}" "" PARENT_SCOPE)
 endfunction()
 
+# Chocolatey / Shining Light OpenSSL on Windows often lives under
+# "C:/Program Files/OpenSSL" (not OpenSSL-Win64) with MSVC import libs in
+# lib/VC/x64/MD. Hint FindOpenSSL before the REQUIRED lookup so Studio
+# sidecar configure does not depend on a single hardcoded root.
+function(_opc_hint_windows_openssl)
+  if(NOT WIN32)
+    return()
+  endif()
+  if(OPENSSL_INCLUDE_DIR AND OPENSSL_CRYPTO_LIBRARY AND OPENSSL_SSL_LIBRARY)
+    return()
+  endif()
+
+  set(_roots "")
+  if(OPENSSL_ROOT_DIR)
+    list(APPEND _roots "${OPENSSL_ROOT_DIR}")
+  endif()
+  if(DEFINED ENV{OPENSSL_ROOT_DIR} AND NOT "$ENV{OPENSSL_ROOT_DIR}" STREQUAL "")
+    list(APPEND _roots "$ENV{OPENSSL_ROOT_DIR}")
+  endif()
+  list(APPEND _roots
+    "C:/Program Files/OpenSSL-Win64"
+    "C:/Program Files/OpenSSL"
+    "C:/Program Files (x86)/OpenSSL-Win64"
+    "C:/Program Files (x86)/OpenSSL"
+  )
+
+  set(_found_root "")
+  set(_found_include "")
+  set(_found_crypto "")
+  set(_found_ssl "")
+  foreach(_root IN LISTS _roots)
+    cmake_path(NORMAL_PATH _root)
+    if(NOT EXISTS "${_root}/include/openssl/ssl.h")
+      continue()
+    endif()
+    set(_found_root "${_root}")
+    set(_found_include "${_root}/include")
+    foreach(_libdir
+        "${_root}/lib/VC/x64/MD"
+        "${_root}/lib/VC/x64/MT"
+        "${_root}/lib"
+        "${_root}/lib64")
+      if(EXISTS "${_libdir}/libcrypto.lib" AND EXISTS "${_libdir}/libssl.lib")
+        set(_found_crypto "${_libdir}/libcrypto.lib")
+        set(_found_ssl "${_libdir}/libssl.lib")
+        break()
+      endif()
+    endforeach()
+    if(_found_crypto)
+      break()
+    endif()
+  endforeach()
+
+  if(NOT _found_root)
+    return()
+  endif()
+
+  if(NOT OPENSSL_ROOT_DIR)
+    set(OPENSSL_ROOT_DIR "${_found_root}" CACHE PATH "OpenSSL install prefix")
+    set(OPENSSL_ROOT_DIR "${_found_root}" PARENT_SCOPE)
+  endif()
+  if(NOT OPENSSL_INCLUDE_DIR AND _found_include)
+    set(OPENSSL_INCLUDE_DIR "${_found_include}" CACHE PATH "OpenSSL include directory")
+    set(OPENSSL_INCLUDE_DIR "${_found_include}" PARENT_SCOPE)
+  endif()
+  if(NOT OPENSSL_CRYPTO_LIBRARY AND _found_crypto)
+    set(OPENSSL_CRYPTO_LIBRARY "${_found_crypto}" CACHE FILEPATH "OpenSSL crypto library")
+    set(OPENSSL_CRYPTO_LIBRARY "${_found_crypto}" PARENT_SCOPE)
+  endif()
+  if(NOT OPENSSL_SSL_LIBRARY AND _found_ssl)
+    set(OPENSSL_SSL_LIBRARY "${_found_ssl}" CACHE FILEPATH "OpenSSL ssl library")
+    set(OPENSSL_SSL_LIBRARY "${_found_ssl}" PARENT_SCOPE)
+  endif()
+endfunction()
+
 function(_opc_fetch_open62541)
+  _opc_hint_windows_openssl()
   find_package(OpenSSL REQUIRED)
   # Previous trees cached this as BOOL=OFF; force the STRING OPENSSL value.
   unset(UA_ENABLE_ENCRYPTION CACHE)
@@ -28,10 +104,18 @@ function(_opc_fetch_open62541)
   set(UA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
   set(UA_NAMESPACE_ZERO "REDUCED" CACHE STRING "" FORCE)
 
+  # OpenSSL 4 (GitHub windows-2025 / current Chocolatey) made ASN1_STRING
+  # opaque; 1.4.11 PKI still reads ia5->length/data. Accessors work on 3.x too.
+  set(_opc_open62541_openssl4_patch
+    "${CMAKE_SOURCE_DIR}/cmake/patches/open62541_openssl4_asn1.cmake")
   FetchContent_Declare(open62541
     GIT_REPOSITORY https://github.com/open62541/open62541.git
     GIT_TAG "v${_OPC_OPEN62541_VERSION}"
     GIT_SHALLOW TRUE
+    PATCH_COMMAND
+      "${CMAKE_COMMAND}"
+      "-DFILE=<SOURCE_DIR>/plugins/crypto/openssl/ua_pki_openssl.c"
+      -P "${_opc_open62541_openssl4_patch}"
     SYSTEM
     EXCLUDE_FROM_ALL
   )
