@@ -174,7 +174,6 @@ struct MonitorClient::Impl {
         if (client == nullptr) {
             throw std::runtime_error("UA_Client_new failed");
         }
-        UA_ClientConfig_setDefault(UA_Client_getConfig(client));
         auto* config = UA_Client_getConfig(client);
         if (config->logging != nullptr) {
             config->logging->log = discard_open62541_log;

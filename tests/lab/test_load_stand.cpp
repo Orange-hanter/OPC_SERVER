@@ -171,7 +171,6 @@ TEST_CASE("load stand OpcUa subscriptions receive many tag updates", "[load][opc
 
     UA_Client* client = UA_Client_new();
     REQUIRE(client != nullptr);
-    UA_ClientConfig_setDefault(UA_Client_getConfig(client));
     REQUIRE(UA_Client_connect(client, (*runtime)->opcua() != nullptr
                                           ? static_cast<opc::adapters::OpcUaServer*>((*runtime)->opcua())
                                                 ->endpoint_url()

@@ -185,7 +185,6 @@ TEST_CASE("OpcUaServer X509IdentityToken accepts trusted user cert and rejects u
         UA_Client* client = UA_Client_new();
         REQUIRE(client != nullptr);
         UA_ClientConfig* cc = UA_Client_getConfig(client);
-        UA_ClientConfig_setDefault(cc);
         UA_ByteString cert{};
         cert.length = trusted->first.size();
         cert.data = trusted->first.data();
@@ -217,7 +216,6 @@ TEST_CASE("OpcUaServer X509IdentityToken accepts trusted user cert and rejects u
         UA_Client* client = UA_Client_new();
         REQUIRE(client != nullptr);
         UA_ClientConfig* cc = UA_Client_getConfig(client);
-        UA_ClientConfig_setDefault(cc);
         UA_ByteString channel_cert{};
         channel_cert.length = trusted->first.size();
         channel_cert.data = trusted->first.data();
@@ -250,7 +248,6 @@ TEST_CASE("OpcUaServer X509IdentityToken accepts trusted user cert and rejects u
         UA_Client* anon = UA_Client_new();
         REQUIRE(anon != nullptr);
         UA_ClientConfig* cc = UA_Client_getConfig(anon);
-        UA_ClientConfig_setDefault(cc);
         UA_ByteString cert{};
         cert.length = trusted->first.size();
         cert.data = trusted->first.data();

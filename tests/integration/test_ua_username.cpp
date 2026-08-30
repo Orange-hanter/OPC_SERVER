@@ -149,7 +149,6 @@ TEST_CASE("OpcUaServer username token accepts good credentials and rejects bad",
     {
         UA_Client* client = UA_Client_new();
         REQUIRE(client != nullptr);
-        UA_ClientConfig_setDefault(UA_Client_getConfig(client));
         const auto bad = UA_Client_connectUsername(client, server.endpoint_url().c_str(), "operator",
                                                    "wrong");
         CHECK(bad != UA_STATUSCODE_GOOD);
@@ -159,7 +158,6 @@ TEST_CASE("OpcUaServer username token accepts good credentials and rejects bad",
     {
         UA_Client* anon = UA_Client_new();
         REQUIRE(anon != nullptr);
-        UA_ClientConfig_setDefault(UA_Client_getConfig(anon));
         const auto denied = UA_Client_connect(anon, server.endpoint_url().c_str());
         CHECK(denied != UA_STATUSCODE_GOOD);
         UA_Client_delete(anon);
@@ -169,7 +167,6 @@ TEST_CASE("OpcUaServer username token accepts good credentials and rejects bad",
         UA_Client* client = UA_Client_new();
         REQUIRE(client != nullptr);
         UA_ClientConfig* cc = UA_Client_getConfig(client);
-        UA_ClientConfig_setDefault(cc);
         cc->timeout = 3000;
         const auto ok = UA_Client_connectUsername(client, server.endpoint_url().c_str(), "operator",
                                                   "secret");

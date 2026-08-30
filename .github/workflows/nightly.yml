@@ -24,7 +24,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            ninja-build cmake g++ valgrind libsqlite3-dev
+            ninja-build cmake g++ valgrind libsqlite3-dev libssl-dev
       - name: Configure
         run: cmake --preset valgrind -DCMAKE_CXX_COMPILER=g++
       - name: Build
@@ -42,13 +42,18 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev libssl-dev
       - name: Configure
-        run: cmake --preset tsan -DCMAKE_CXX_COMPILER=g++
+        run: cmake --preset tsan -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
       - name: Build
-        run: cmake --build --preset tsan
+        run: cmake --build --preset tsan --target opc_tests opc-map
       - name: Test
-        run: ctest --preset tsan --timeout 240
+        # Same exclude as PR CI: open62541 is not TSan-built (UA_LOCK inversion).
+        run: >
+          ctest --preset tsan --timeout 240
+          -E "OpcUa|OPC UA|UA Write|UA Subscription|UA write|opc-monitor browses|SignAndEncrypt"
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
 
   e2e:
     name: Lab E2E
@@ -60,7 +65,8 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev libssl-dev \
+            libcurl4-openssl-dev protobuf-compiler libprotobuf-dev
       - name: Configure
         run: cmake --preset ci -DCMAKE_CXX_COMPILER=g++
       - name: Build
@@ -80,7 +86,7 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev gcovr
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev libssl-dev gcovr
       - name: Configure
         run: cmake --preset coverage -DCMAKE_CXX_COMPILER=g++
       - name: Build
@@ -100,7 +106,8 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev
+          sudo apt-get install -y ninja-build cmake g++ libsqlite3-dev libssl-dev \
+            libcurl4-openssl-dev protobuf-compiler libprotobuf-dev
       - name: Configure
         run: cmake --preset ci -DCMAKE_CXX_COMPILER=g++
       - name: Build
