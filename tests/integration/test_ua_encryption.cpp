@@ -153,7 +153,6 @@ TEST_CASE("OpcUaServer SignAndEncrypt is honored and readable", "[opcua][encrypt
     UA_Client* client = UA_Client_new();
     REQUIRE(client != nullptr);
     UA_ClientConfig* cc = UA_Client_getConfig(client);
-    UA_ClientConfig_setDefault(cc);
     UA_ByteString cert{};
     cert.length = client_material->first.size();
     cert.data = client_material->first.data();

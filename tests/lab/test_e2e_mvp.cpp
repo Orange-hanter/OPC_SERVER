@@ -137,7 +137,6 @@ TEST_CASE("E2E MVP: Modbus TCP values visible in UA; write; disconnect quality",
     REQUIRE(ua != nullptr);
 
     UA_Client* client = UA_Client_new();
-    UA_ClientConfig_setDefault(UA_Client_getConfig(client));
     REQUIRE(UA_Client_connect(client, ua->endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     UA_NodeId objects = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);

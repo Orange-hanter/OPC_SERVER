@@ -149,7 +149,6 @@ TEST_CASE("OpcUaServer exposes TagStore values via Read", "[integration][opcua][
 
     UA_Client* client = UA_Client_new();
     REQUIRE(client != nullptr);
-    UA_ClientConfig_setDefault(UA_Client_getConfig(client));
 
     const auto endpoint = server.endpoint_url();
     auto connect = UA_Client_connect(client, endpoint.c_str());
@@ -259,7 +258,6 @@ TEST_CASE("ServerRuntime with OPC UA publishes polled values", "[integration][op
     REQUIRE(ua != nullptr);
 
     UA_Client* client = UA_Client_new();
-    UA_ClientConfig_setDefault(UA_Client_getConfig(client));
     REQUIRE(UA_Client_connect(client, ua->endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     auto find_child = [&](UA_NodeId parent, const char* name) -> UA_NodeId {

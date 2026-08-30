@@ -179,7 +179,6 @@ TEST_CASE("UA Write enqueues Dispatcher and reaches Modbus", "[integration][opcu
     REQUIRE(server.bind_tags(store, specs));
 
     UA_Client* client = UA_Client_new();
-    UA_ClientConfig_setDefault(UA_Client_getConfig(client));
     REQUIRE(UA_Client_connect(client, server.endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     UA_NodeId objects = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
@@ -244,7 +243,6 @@ TEST_CASE("UA Subscription notifies on TagStore publish", "[integration][opcua][
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     UA_Client* client = UA_Client_new();
-    UA_ClientConfig_setDefault(UA_Client_getConfig(client));
     REQUIRE(UA_Client_connect(client, server.endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     UA_NodeId objects = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
@@ -315,7 +313,6 @@ TEST_CASE("UA write to non-writable tag returns BadNotWritable", "[integration][
     REQUIRE(server.bind_tags(store, specs));
 
     UA_Client* client = UA_Client_new();
-    UA_ClientConfig_setDefault(UA_Client_getConfig(client));
     REQUIRE(UA_Client_connect(client, server.endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     UA_NodeId objects = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);

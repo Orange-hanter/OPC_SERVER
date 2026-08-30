@@ -100,6 +100,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and build `opc-map` / `opc-monitor` with MSVC instead of PATH MinGW
 - open62541 1.4.11 PKI: use `ASN1_STRING_*` accessors so OpenSSL 4 (opaque
   `ASN1_STRING`) compiles on Windows Studio sidecars
+- Nightly: install libcurl/protobuf for `ci` E2E/soak; skip open62541 UA tests
+  under TSan (same exclude as PR CI)
+- UA client tests and `opc-monitor`: do not call `UA_ClientConfig_setDefault`
+  after `UA_Client_new` (double-init leaked the POSIX event loop under Valgrind)
 - Write batch tail no longer dropped when a Modbus write fails mid-flush
 - Bad/WriteRejected publishes keep the previous engineering ScalarValue
 - Removed adapters→core coupling via `RuntimeIndex` in the OPC UA adapter

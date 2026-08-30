@@ -40,13 +40,14 @@
 
 Не блокер merge (кроме оговорённого TSan перед Asio):
 
-- TSan preset + `[core]` tests
+- TSan: тот же exclude, что PR CI (`OpcUa|…|SignAndEncrypt`) — open62541 не
+  TSan-инструментирован (`UA_LOCK` lock-order-inversion)
 - Valgrind Memcheck: все автоматические Catch2-тесты кроме opt-in E2E/soak;
   definite/indirect leaks и memory errors ломают job
-- `OPC_E2E=1` lab MVP scenario
+- `OPC_E2E=1` / `OPC_SOAK=1` на preset `ci` (`OPC_WITH_OTLP=ON`): нужны
+  `libcurl4-openssl-dev`, `protobuf-compiler`, `libprotobuf-dev`, `libssl-dev`
 - Coverage отчёт `domain`/`core`/`project` (порог 70% — warning, затем gate)
 - Clang fuzzer smoke (`OPC_ENABLE_FUZZERS`), если toolchain доступен
-- Короткий soak (`OPC_SOAK=1`, минуты, не часы)
 
 Lab/release (не Actions по умолчанию): OPC UA CTT, FAT/SAT, HIL — см. [13-testing-program.md](13-testing-program.md).
 
