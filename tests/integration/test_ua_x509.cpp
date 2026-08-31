@@ -5,6 +5,7 @@
 #include "app/cli_options.hpp"
 #include "ports/i_log.hpp"
 #include "project/load.hpp"
+#include "support/ua_client.hpp"
 
 #include <open62541/client.h>
 #include <open62541/client_config_default.h>
@@ -182,9 +183,9 @@ TEST_CASE("OpcUaServer X509IdentityToken accepts trusted user cert and rejects u
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
 
     {
-        UA_Client* client = UA_Client_new();
-        REQUIRE(client != nullptr);
-        UA_ClientConfig* cc = UA_Client_getConfig(client);
+        auto client = make_ua_client();
+        REQUIRE(client);
+        UA_ClientConfig* cc = UA_Client_getConfig(client.get());
         UA_ByteString cert{};
         cert.length = trusted->first.size();
         cert.data = trusted->first.data();
@@ -201,21 +202,21 @@ TEST_CASE("OpcUaServer X509IdentityToken accepts trusted user cert and rejects u
             UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
         UA_CertificateVerification_AcceptAll(&cc->certificateVerification);
         REQUIRE(UA_ClientConfig_setAuthenticationCert(cc, cert, key) == UA_STATUSCODE_GOOD);
-        REQUIRE(UA_Client_connect(client, server.endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
+        REQUIRE(UA_Client_connect(client.get(), server.endpoint_url().c_str()) ==
+                UA_STATUSCODE_GOOD);
 
         UA_Variant value;
         UA_Variant_init(&value);
         const UA_NodeId node = UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_SERVERSTATUS_STATE);
-        REQUIRE(UA_Client_readValueAttribute(client, node, &value) == UA_STATUSCODE_GOOD);
+        REQUIRE(UA_Client_readValueAttribute(client.get(), node, &value) == UA_STATUSCODE_GOOD);
         UA_Variant_clear(&value);
-        UA_Client_disconnect(client);
-        UA_Client_delete(client);
+        UA_Client_disconnect(client.get());
     }
 
     {
-        UA_Client* client = UA_Client_new();
-        REQUIRE(client != nullptr);
-        UA_ClientConfig* cc = UA_Client_getConfig(client);
+        auto client = make_ua_client();
+        REQUIRE(client);
+        UA_ClientConfig* cc = UA_Client_getConfig(client.get());
         UA_ByteString channel_cert{};
         channel_cert.length = trusted->first.size();
         channel_cert.data = trusted->first.data();
@@ -239,15 +240,14 @@ TEST_CASE("OpcUaServer X509IdentityToken accepts trusted user cert and rejects u
         UA_CertificateVerification_AcceptAll(&cc->certificateVerification);
         REQUIRE(UA_ClientConfig_setAuthenticationCert(cc, auth_cert, auth_key) ==
                 UA_STATUSCODE_GOOD);
-        const auto bad = UA_Client_connect(client, server.endpoint_url().c_str());
+        const auto bad = UA_Client_connect(client.get(), server.endpoint_url().c_str());
         CHECK(bad != UA_STATUSCODE_GOOD);
-        UA_Client_delete(client);
     }
 
     {
-        UA_Client* anon = UA_Client_new();
-        REQUIRE(anon != nullptr);
-        UA_ClientConfig* cc = UA_Client_getConfig(anon);
+        auto anon = make_ua_client();
+        REQUIRE(anon);
+        UA_ClientConfig* cc = UA_Client_getConfig(anon.get());
         UA_ByteString cert{};
         cert.length = trusted->first.size();
         cert.data = trusted->first.data();
@@ -263,9 +263,8 @@ TEST_CASE("OpcUaServer X509IdentityToken accepts trusted user cert and rejects u
         cc->securityPolicyUri =
             UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
         UA_CertificateVerification_AcceptAll(&cc->certificateVerification);
-        const auto denied = UA_Client_connect(anon, server.endpoint_url().c_str());
+        const auto denied = UA_Client_connect(anon.get(), server.endpoint_url().c_str());
         CHECK(denied != UA_STATUSCODE_GOOD);
-        UA_Client_delete(anon);
     }
 
     server.stop();
