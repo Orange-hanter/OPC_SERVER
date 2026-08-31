@@ -8,6 +8,7 @@
 #include "core/tag_store.hpp"
 #include "ports/i_log.hpp"
 #include "project/load.hpp"
+#include "support/ua_client.hpp"
 
 #include <open62541/client.h>
 #include <open62541/client_config_default.h>
@@ -150,9 +151,9 @@ TEST_CASE("OpcUaServer SignAndEncrypt is honored and readable", "[opcua][encrypt
         opc::adapters::load_or_create_application_cert("urn:opc-server:ua-secure-client", {}, nullptr);
     REQUIRE(client_material);
 
-    UA_Client* client = UA_Client_new();
-    REQUIRE(client != nullptr);
-    UA_ClientConfig* cc = UA_Client_getConfig(client);
+    auto client = make_ua_client();
+    REQUIRE(client);
+    UA_ClientConfig* cc = UA_Client_getConfig(client.get());
     UA_ByteString cert{};
     cert.length = client_material->first.size();
     cert.data = client_material->first.data();
@@ -169,16 +170,15 @@ TEST_CASE("OpcUaServer SignAndEncrypt is honored and readable", "[opcua][encrypt
         UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
     UA_CertificateVerification_AcceptAll(&cc->certificateVerification);
 
-    const auto connect = UA_Client_connect(client, server.endpoint_url().c_str());
+    const auto connect = UA_Client_connect(client.get(), server.endpoint_url().c_str());
     REQUIRE(connect == UA_STATUSCODE_GOOD);
 
     UA_Variant value;
     UA_Variant_init(&value);
     const UA_NodeId node = UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_SERVERSTATUS_STATE);
-    REQUIRE(UA_Client_readValueAttribute(client, node, &value) == UA_STATUSCODE_GOOD);
+    REQUIRE(UA_Client_readValueAttribute(client.get(), node, &value) == UA_STATUSCODE_GOOD);
     UA_Variant_clear(&value);
-    UA_Client_disconnect(client);
-    UA_Client_delete(client);
+    UA_Client_disconnect(client.get());
     server.stop();
 }
 #else
