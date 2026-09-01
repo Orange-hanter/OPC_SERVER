@@ -11,6 +11,7 @@
 #include "project/load.hpp"
 #include "support/free_tcp_port.hpp"
 #include "support/loopback_modbus_slave.hpp"
+#include "support/ua_client.hpp"
 
 #include <open62541/client.h>
 #include <open62541/client_config_default.h>
@@ -136,7 +137,9 @@ TEST_CASE("E2E MVP: Modbus TCP values visible in UA; write; disconnect quality",
     auto* ua = dynamic_cast<OpcUaServer*>((*runtime)->opcua());
     REQUIRE(ua != nullptr);
 
-    UA_Client* client = UA_Client_new();
+    auto owned = make_ua_client();
+    REQUIRE(owned);
+    UA_Client* client = owned.get();
     REQUIRE(UA_Client_connect(client, ua->endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     UA_NodeId objects = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
@@ -183,6 +186,5 @@ TEST_CASE("E2E MVP: Modbus TCP values visible in UA; write; disconnect quality",
     UA_NodeId_clear(&level_node);
     UA_NodeId_clear(&setpoint);
     UA_Client_disconnect(client);
-    UA_Client_delete(client);
     (*runtime)->stop();
 }

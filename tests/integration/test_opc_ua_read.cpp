@@ -11,6 +11,7 @@
 #include "ports/i_log.hpp"
 #include "ports/i_metrics.hpp"
 #include "project/load.hpp"
+#include "support/ua_client.hpp"
 
 #include <open62541/client.h>
 #include <open62541/client_config_default.h>
@@ -147,8 +148,9 @@ TEST_CASE("OpcUaServer exposes TagStore values via Read", "[integration][opcua][
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
-    UA_Client* client = UA_Client_new();
-    REQUIRE(client != nullptr);
+    auto owned = make_ua_client();
+    REQUIRE(owned);
+    UA_Client* client = owned.get();
 
     const auto endpoint = server.endpoint_url();
     auto connect = UA_Client_connect(client, endpoint.c_str());
@@ -211,7 +213,6 @@ TEST_CASE("OpcUaServer exposes TagStore values via Read", "[integration][opcua][
     UA_NodeId_clear(&tank);
     UA_NodeId_clear(&level_node);
     UA_Client_disconnect(client);
-    UA_Client_delete(client);
     server.stop();
 }
 
@@ -257,7 +258,9 @@ TEST_CASE("ServerRuntime with OPC UA publishes polled values", "[integration][op
     auto* ua = dynamic_cast<OpcUaServer*>((*runtime)->opcua());
     REQUIRE(ua != nullptr);
 
-    UA_Client* client = UA_Client_new();
+    auto owned = make_ua_client();
+    REQUIRE(owned);
+    UA_Client* client = owned.get();
     REQUIRE(UA_Client_connect(client, ua->endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     auto find_child = [&](UA_NodeId parent, const char* name) -> UA_NodeId {
@@ -309,6 +312,5 @@ TEST_CASE("ServerRuntime with OPC UA publishes polled values", "[integration][op
     UA_NodeId_clear(&tank);
     UA_NodeId_clear(&level_node);
     UA_Client_disconnect(client);
-    UA_Client_delete(client);
     (*runtime)->stop();
 }

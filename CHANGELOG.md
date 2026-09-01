@@ -106,6 +106,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   after `UA_Client_new` (double-init leaked the POSIX event loop under Valgrind)
 - SignAndEncrypt / X.509 UA tests: 60s client timeout + RAII delete so Valgrind
   Memcheck does not `BadTimeout` the OpenSSL channel handshake
+- All remaining UA client tests use `make_ua_client()` (60s timeout + RAII);
+  nightly Memcheck hit `BadTimeout` on SecurityPolicy None writes as well
 - Write batch tail no longer dropped when a Modbus write fails mid-flush
 - Bad/WriteRejected publishes keep the previous engineering ScalarValue
 - Removed adapters→core coupling via `RuntimeIndex` in the OPC UA adapter

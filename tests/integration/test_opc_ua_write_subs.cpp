@@ -10,6 +10,7 @@
 #include "ports/i_log.hpp"
 #include "ports/i_metrics.hpp"
 #include "project/load.hpp"
+#include "support/ua_client.hpp"
 
 #include <open62541/client.h>
 #include <open62541/client_config_default.h>
@@ -178,7 +179,9 @@ TEST_CASE("UA Write enqueues Dispatcher and reaches Modbus", "[integration][opcu
     }
     REQUIRE(server.bind_tags(store, specs));
 
-    UA_Client* client = UA_Client_new();
+    auto owned = make_ua_client();
+    REQUIRE(owned);
+    UA_Client* client = owned.get();
     REQUIRE(UA_Client_connect(client, server.endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     UA_NodeId objects = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
@@ -213,7 +216,6 @@ TEST_CASE("UA Write enqueues Dispatcher and reaches Modbus", "[integration][opcu
     UA_NodeId_clear(&tank);
     UA_NodeId_clear(&setpoint);
     UA_Client_disconnect(client);
-    UA_Client_delete(client);
     server.stop();
 }
 
@@ -242,7 +244,9 @@ TEST_CASE("UA Subscription notifies on TagStore publish", "[integration][opcua][
                                         .server_ts = 1000});
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-    UA_Client* client = UA_Client_new();
+    auto owned = make_ua_client();
+    REQUIRE(owned);
+    UA_Client* client = owned.get();
     REQUIRE(UA_Client_connect(client, server.endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     UA_NodeId objects = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
@@ -291,7 +295,6 @@ TEST_CASE("UA Subscription notifies on TagStore publish", "[integration][opcua][
     UA_NodeId_clear(&tank);
     UA_NodeId_clear(&level_node);
     UA_Client_disconnect(client);
-    UA_Client_delete(client);
     server.stop();
 }
 
@@ -312,7 +315,9 @@ TEST_CASE("UA write to non-writable tag returns BadNotWritable", "[integration][
     });
     REQUIRE(server.bind_tags(store, specs));
 
-    UA_Client* client = UA_Client_new();
+    auto owned = make_ua_client();
+    REQUIRE(owned);
+    UA_Client* client = owned.get();
     REQUIRE(UA_Client_connect(client, server.endpoint_url().c_str()) == UA_STATUSCODE_GOOD);
 
     UA_NodeId objects = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
@@ -336,6 +341,5 @@ TEST_CASE("UA write to non-writable tag returns BadNotWritable", "[integration][
     UA_NodeId_clear(&tank);
     UA_NodeId_clear(&level);
     UA_Client_disconnect(client);
-    UA_Client_delete(client);
     server.stop();
 }
