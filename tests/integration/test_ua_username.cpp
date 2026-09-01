@@ -4,6 +4,7 @@
 #include "app/cli_options.hpp"
 #include "ports/i_log.hpp"
 #include "project/load.hpp"
+#include "support/ua_client.hpp"
 
 #include <open62541/client.h>
 #include <open62541/client_config_default.h>
@@ -147,27 +148,24 @@ TEST_CASE("OpcUaServer username token accepts good credentials and rejects bad",
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     {
-        UA_Client* client = UA_Client_new();
-        REQUIRE(client != nullptr);
-        const auto bad = UA_Client_connectUsername(client, server.endpoint_url().c_str(), "operator",
-                                                   "wrong");
+        auto owned = make_ua_client();
+        REQUIRE(owned);
+        const auto bad = UA_Client_connectUsername(owned.get(), server.endpoint_url().c_str(),
+                                                   "operator", "wrong");
         CHECK(bad != UA_STATUSCODE_GOOD);
-        UA_Client_delete(client);
     }
 
     {
-        UA_Client* anon = UA_Client_new();
-        REQUIRE(anon != nullptr);
-        const auto denied = UA_Client_connect(anon, server.endpoint_url().c_str());
+        auto anon = make_ua_client();
+        REQUIRE(anon);
+        const auto denied = UA_Client_connect(anon.get(), server.endpoint_url().c_str());
         CHECK(denied != UA_STATUSCODE_GOOD);
-        UA_Client_delete(anon);
     }
 
     {
-        UA_Client* client = UA_Client_new();
-        REQUIRE(client != nullptr);
-        UA_ClientConfig* cc = UA_Client_getConfig(client);
-        cc->timeout = 3000;
+        auto owned = make_ua_client();
+        REQUIRE(owned);
+        UA_Client* client = owned.get();
         const auto ok = UA_Client_connectUsername(client, server.endpoint_url().c_str(), "operator",
                                                   "secret");
         REQUIRE(ok == UA_STATUSCODE_GOOD);
@@ -177,7 +175,6 @@ TEST_CASE("OpcUaServer username token accepts good credentials and rejects bad",
         REQUIRE(UA_Client_readValueAttribute(client, node, &value) == UA_STATUSCODE_GOOD);
         UA_Variant_clear(&value);
         UA_Client_disconnect(client);
-        UA_Client_delete(client);
     }
 
     server.stop();

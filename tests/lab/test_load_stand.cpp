@@ -8,6 +8,7 @@
 #include "ports/i_log.hpp"
 #include "ports/i_metrics.hpp"
 #include "project/load.hpp"
+#include "support/ua_client.hpp"
 
 #include <open62541/client.h>
 #include <open62541/client_config_default.h>
@@ -169,8 +170,9 @@ TEST_CASE("load stand OpcUa subscriptions receive many tag updates", "[load][opc
     REQUIRE((*runtime)->start());
     REQUIRE((*runtime)->poll_once(clock.now_ms()));
 
-    UA_Client* client = UA_Client_new();
-    REQUIRE(client != nullptr);
+    auto owned = make_ua_client();
+    REQUIRE(owned);
+    UA_Client* client = owned.get();
     REQUIRE(UA_Client_connect(client, (*runtime)->opcua() != nullptr
                                           ? static_cast<opc::adapters::OpcUaServer*>((*runtime)->opcua())
                                                 ->endpoint_url()
@@ -203,6 +205,5 @@ TEST_CASE("load stand OpcUa subscriptions receive many tag updates", "[load][opc
     }
     CHECK(notifications.load() >= 1);
     UA_Client_disconnect(client);
-    UA_Client_delete(client);
     (*runtime)->stop();
 }

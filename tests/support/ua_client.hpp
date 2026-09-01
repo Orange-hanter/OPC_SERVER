@@ -6,8 +6,8 @@
 #include <memory>
 
 // UA_Client_new already calls UA_ClientConfig_setDefault. Do not call it again.
-// SignAndEncrypt / X.509 handshake under Valgrind exceeds the 5s default timeout
-// (nightly saw BadTimeout after ~16s of OpenSSL channel setup).
+// Nightly Memcheck is ~10–20× slower: SignAndEncrypt handshake took ~16s, and
+// even SecurityPolicy None connects have hit the 5s default (BadTimeout).
 inline constexpr UA_UInt32 kOpcUaClientTimeoutMs = 60'000;
 
 struct UaClientDeleter {
